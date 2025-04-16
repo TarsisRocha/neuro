@@ -6,11 +6,12 @@ import os
 import textwrap
 from io import BytesIO
 
-from reportlab.pdfgen import canvas
+# ReportLab, renomeado para evitar ambiguidade com UI
+from reportlab.pdfgen import canvas as pdfcanvas
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.utils import ImageReader
 
-# Módulos de dados
+# Dados
 from pacientes import adicionar_paciente, obter_pacientes
 from agendamentos import adicionar_agendamento, obter_agendamentos
 from prontuario import adicionar_prontuario, obter_prontuarios_por_paciente
@@ -74,39 +75,40 @@ def cadastro_pacientes():
     if enviar:
         adicionar_paciente(
             nome, data_nasc.isoformat(), idade,
-            cpf, rg, email,
-            tel, tel2,
-            endereco, numero, comp, bairro, cep, cidade, estado,
-            plano, historico, obs
+            cpf, rg, email, tel, tel2,
+            endereco, numero, comp, bairro,
+            cep, cidade, estado, plano,
+            historico, obs
         )
         st.success("Paciente cadastrado com sucesso!")
 
 def agendamentos_pagina():
     st.title("Agendamento de Consultas")
-    pacientes = obter_pacientes()
-    if not pacientes:
+    pacs = obter_pacientes()
+    if not pacs:
         st.info("Cadastre um paciente primeiro!")
         return
-    op = {f"{p['id']} - {p['nome']}": p['id'] for p in pacientes}
+    op = {f"{p['id']} - {p['nome']}": p['id'] for p in pacs}
     sel = st.selectbox("Paciente", list(op.keys()))
     pid = op[sel]
     with st.form("form_agendamento"):
         data_c = st.date_input("Data da Consulta", datetime.date.today())
-        hora_c = st.time_input("Hora da Consulta", datetime.time(9, 0))
+        hora_c = st.time_input("Hora da Consulta", datetime.time(9,0))
         obs = st.text_area("Observações")
-        tipo = st.selectbox("Tipo de Consulta", ["Plano de Saúde", "Particular"])
+        tipo = st.selectbox("Tipo de Consulta", ["Plano de Saúde","Particular"])
         enviar = st.form_submit_button("Agendar")
     if enviar:
-        adicionar_agendamento(pid, data_c.isoformat(), hora_c.strftime("%H:%M"), obs, tipo)
+        adicionar_agendamento(pid, data_c.isoformat(),
+                              hora_c.strftime("%H:%M"), obs, tipo)
         st.success("Consulta agendada com sucesso!")
 
 def prontuario_pagina():
     st.title("Prontuário Eletrônico")
-    pacientes = obter_pacientes()
-    if not pacientes:
+    pacs = obter_pacientes()
+    if not pacs:
         st.info("Cadastre um paciente primeiro!")
         return
-    op = {f"{p['id']} - {p['nome']}": p['id'] for p in pacientes}
+    op = {f"{p['id']} - {p['nome']}": p['id'] for p in pacs}
     sel = st.selectbox("Paciente", list(op.keys()))
     pid = op[sel]
     with st.form("form_prontuario"):
@@ -120,11 +122,11 @@ def prontuario_pagina():
 
 def financeiro_pagina():
     st.title("Gestão Financeira")
-    pacientes = obter_pacientes()
-    if not pacientes:
+    pacs = obter_pacientes()
+    if not pacs:
         st.info("Cadastre um paciente primeiro!")
         return
-    op = {f"{p['id']} - {p['nome']}": p['id'] for p in pacientes}
+    op = {f"{p['id']} - {p['nome']}": p['id'] for p in pacs}
     sel = st.selectbox("Paciente", list(op.keys()))
     pid = op[sel]
     with st.form("form_financeiro"):
@@ -140,11 +142,11 @@ def financeiro_pagina():
 
 def comunicacao_pagina():
     st.title("Comunicação com Pacientes")
-    pacientes = obter_pacientes()
-    if not pacientes:
+    pacs = obter_pacientes()
+    if not pacs:
         st.info("Cadastre um paciente primeiro!")
         return
-    op = {f"{p['id']} - {p['nome']}": p['id'] for p in pacientes}
+    op = {f"{p['id']} - {p['nome']}": p['id'] for p in pacs}
     sel = st.selectbox("Paciente", list(op.keys()))
     pid = op[sel]
     with st.form("form_comunicacao"):
@@ -161,7 +163,7 @@ def relatorios_pagina():
     st.write(f"Consultas: {tot_a}")
     st.write(f"Financeiro: R$ {tot_f:.2f}")
     st.subheader("Consultas por Tipo")
-    for t, q in relatorio_por_tipo_agendamento().items():
+    for t,q in relatorio_por_tipo_agendamento().items():
         st.write(f"{t}: {q} consulta(s)")
 
 def dashboard_pagina():
@@ -169,7 +171,7 @@ def dashboard_pagina():
     tot_p, tot_a, tot_f = gerar_relatorio()
     pacs = obter_pacientes()
     media = np.mean([p['idade'] for p in pacs if p.get('idade') is not None]) if pacs else 0
-    c1, c2, c3, c4 = st.columns(4)
+    c1,c2,c3,c4 = st.columns(4)
     c1.metric("Pacientes", tot_p)
     c2.metric("Consultas", tot_a)
     c3.metric("Financeiro", f"R$ {tot_f:.2f}")
@@ -196,42 +198,42 @@ def buscar_paciente_pagina():
 
 def laudos_pagina():
     st.title("Emissão de Laudo em PDF")
-    pacientes = obter_pacientes()
-    if not pacientes:
+    pacs = obter_pacientes()
+    if not pacs:
         st.info("Cadastre um paciente primeiro!")
         return
 
-    op = {f"{p['id']} - {p['nome']}": p for p in pacientes}
+    op = {f"{p['id']} - {p['nome']}": p for p in pacs}
     sel = st.selectbox("Paciente", list(op.keys()))
     pac = op[sel]
 
-    modelo_key = st.selectbox("Modelo de Laudo", list(LAUDOS.keys()))
-    template_text = LAUDOS[modelo_key]
+    modelo = st.selectbox("Modelo de Laudo", list(LAUDOS.keys()))
+    template = LAUDOS[modelo]
 
     st.markdown("Edite o texto. Use `{nome}` e `{data}` como placeholders.")
-    laudo_txt = st.text_area("Conteúdo do Laudo", value=template_text, height=300)
+    laudo_txt = st.text_area("Conteúdo do Laudo", value=template, height=300)
 
     if st.button("Gerar PDF"):
         ctx = {"nome": pac["nome"], "data": datetime.date.today().strftime("%d/%m/%Y")}
         rendered = laudo_txt.format(**ctx)
 
-        buffer = BytesIO()
-        pdf = canvas.Canvas(buffer, pagesize=letter)
-        w, h = letter
+        buf = BytesIO()
+        pdf = pdfcanvas.Canvas(buf, pagesize=letter)
+        w,h = letter
 
         logo = "neuro.png"
         if os.path.exists(logo):
             img = ImageReader(logo)
-            lw, lh = 150, 50
-            pdf.drawImage(img, (w - lw) / 2, h - lh - 20, width=lw, height=lh, mask="auto")
+            lw,lh = 150,50
+            pdf.drawImage(img,(w-lw)/2, h-lh-20, width=lw, height=lh, mask="auto")
 
-        pdf.setFont("Helvetica-Bold", 16)
-        pdf.drawCentredString(w / 2, h - lh - 40, "Consultório de Neuropediatria")
-        pdf.setFont("Helvetica-Bold", 14)
-        pdf.drawCentredString(w / 2, h - lh - 60, "LAUDO MÉDICO")
+        pdf.setFont("Helvetica-Bold",16)
+        pdf.drawCentredString(w/2, h-lh-40, "Consultório de Neuropediatria")
+        pdf.setFont("Helvetica-Bold",14)
+        pdf.drawCentredString(w/2, h-lh-60, "LAUDO MÉDICO")
 
-        text_obj = pdf.beginText(40, h - lh - 100)
-        text_obj.setFont("Helvetica", 12)
+        text_obj = pdf.beginText(40, h-lh-100)
+        text_obj.setFont("Helvetica",12)
         text_obj.setLeading(18)
         for para in rendered.split("\n\n"):
             for line in textwrap.wrap(para, width=95):
@@ -241,43 +243,37 @@ def laudos_pagina():
 
         pdf.showPage()
         pdf.save()
-        buffer.seek(0)
+        buf.seek(0)
 
-        fname = f"laudo_{pac['nome'].replace(' ', '_')}_{ctx['data'].replace('/', '-')}.pdf"
-        st.download_button("Download do Laudo (PDF)", buffer, file_name=fname, mime="application/pdf")
+        fname = f"laudo_{pac['nome'].replace(' ','_')}_{ctx['data'].replace('/','-')}.pdf"
+        st.download_button("Download do Laudo (PDF)", buf, file_name=fname, mime="application/pdf")
 
 def main():
     mostrar_logo()
     choice = option_menu(
-        None,
-        ["Início","Dashboard","Buscar Paciente","Cadastro de Pacientes","Agendamentos",
-         "Prontuário","Financeiro","Comunicação","Relatórios","Laudos"],
-        ["house","bar-chart","search","person-plus","calendar","file-text",
-         "wallet","chat-dots","clipboard-data","file-earmark-text"],
-        menu_icon=None,
+        menu_title=None,
+        options=[
+            "Início","Dashboard","Buscar Paciente","Cadastro de Pacientes",
+            "Agendamentos","Prontuário","Financeiro","Comunicação",
+            "Relatórios","Laudos"
+        ],
+        icons=[
+            "house","bar-chart","search","person-plus","calendar",
+            "file-text","wallet","chat-dots","clipboard-data","file-earmark-text"
+        ],
         default_index=0,
         orientation="horizontal"
     )
-    if choice == "Início":
-        pagina_inicial()
-    elif choice == "Dashboard":
-        dashboard_pagina()
-    elif choice == "Buscar Paciente":
-        buscar_paciente_pagina()
-    elif choice == "Cadastro de Pacientes":
-        cadastro_pacientes()
-    elif choice == "Agendamentos":
-        agendamentos_pagina()
-    elif choice == "Prontuário":
-        prontuario_pagina()
-    elif choice == "Financeiro":
-        financeiro_pagina()
-    elif choice == "Comunicação":
-        comunicacao_pagina()
-    elif choice == "Relatórios":
-        relatorios_pagina()
-    elif choice == "Laudos":
-        laudos_pagina()
+    if choice=="Início": pagina_inicial()
+    elif choice=="Dashboard": dashboard_pagina()
+    elif choice=="Buscar Paciente": buscar_paciente_pagina()
+    elif choice=="Cadastro de Pacientes": cadastro_pacientes()
+    elif choice=="Agendamentos": agendamentos_pagina()
+    elif choice=="Prontuário": prontuario_pagina()
+    elif choice=="Financeiro": financeiro_pagina()
+    elif choice=="Comunicação": comunicacao_pagina()
+    elif choice=="Relatórios": relatorios_pagina()
+    elif choice=="Laudos": laudos_pagina()
 
-if __name__ == "__main__":
+if __name__=="__main__":
     main()
