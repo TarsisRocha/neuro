@@ -30,14 +30,14 @@ from st_aggrid import AgGrid, GridOptionsBuilder
 # --- Configuração da página ---
 st.set_page_config(
     page_title="Consultório de Neuropediatria",
-    page_icon="logo.png",
+    page_icon="neuro.png",
     layout="wide"
 )
 
 # --- Helpers de template ---
 def load_docx(path: str) -> str:
     doc = Document(path)
-    return "\n".join(p.text for p in doc.paragraphs)
+    return "n".join(p.text for p in doc.paragraphs)
 
 def load_odt(path: str) -> str:
     odt = load_odf(path)
@@ -46,7 +46,7 @@ def load_odt(path: str) -> str:
 
 # --- Componentes de interface ---
 def mostrar_logo():
-    st.image("logo.png", width=150)
+    st.image("neuro.png", width=150)
     st.markdown("---")
 
 def exibir_tabela(df: pd.DataFrame):
