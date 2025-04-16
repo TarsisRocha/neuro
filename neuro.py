@@ -21,6 +21,10 @@ st.set_page_config(
     page_icon="neuro.png",           # define o favicon
     layout="wide"
 )
+# Função para exibir a logo fixa no topo
+def mostrar_logo():
+    st.image("neuro.png", width=200)
+    st.markdown("---")
 
 # Função auxiliar para exibir DataFrames com AgGrid
 def exibir_tabela(df):
