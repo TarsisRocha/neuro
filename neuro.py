@@ -1,8 +1,9 @@
-# app.py
 import streamlit as st
 import datetime
 import pandas as pd
 import numpy as np
+import plotly.graph_objects as go
+
 from pacientes import adicionar_paciente, obter_pacientes
 from agendamentos import adicionar_agendamento, obter_agendamentos
 from prontuario import adicionar_prontuario, obter_prontuarios_por_paciente
@@ -11,25 +12,24 @@ from comunicacao import adicionar_comunicacao
 from laudos import adicionar_laudo, obter_laudos
 from relatorios import gerar_relatorio, relatorio_por_tipo_agendamento
 
-# Importando os componentes para menus interativos e tabelas
 from streamlit_option_menu import option_menu
 from st_aggrid import AgGrid, GridOptionsBuilder
 
-
+# Configuração da página
 st.set_page_config(
-    page_title="Consultório de Neuropediatria", 
-    page_icon="neuro.png",           # define o favicon
+    page_title="Consultório de Neuropediatria",
+    page_icon="logo.png",
     layout="wide"
 )
-# Função para exibir a logo fixa no topo
+
+# Função para exibir logo fixa no topo
 def mostrar_logo():
-    st.image("neuro.png", width=200)
+    st.image("logo.png", width=200)
     st.markdown("---")
 
 # Função auxiliar para exibir DataFrames com AgGrid
 def exibir_tabela(df):
     if not df.empty:
-        # Garante que os nomes das colunas sejam strings
         df.columns = df.columns.map(str)
         gb = GridOptionsBuilder.from_dataframe(df)
         gb.configure_pagination(paginationAutoPageSize=True)
@@ -39,23 +39,21 @@ def exibir_tabela(df):
     else:
         st.info("Nenhum dado para exibir.")
 
-# --- Páginas do Sistema ---
+# Páginas do sistema
 
 def pagina_inicial():
-    st.image("neuro.png", width=200, use_container_width=False)
-    st.title("Consultório de Neuropediatria")
-    st.write("Bem-vindo ao sistema de gestão do consultório!")
-    st.image("https://via.placeholder.com/800x300.png?text=Dashboard+Consult%C3%B3rio", use_container_width=True)
+    st.title("Início")
+    st.write("Bem‑vindo ao sistema de gestão do consultório de neuropediatria.")
 
 def cadastro_pacientes():
-    st.header("Cadastro de Pacientes")
+    st.title("Cadastro de Pacientes")
     with st.form("form_cadastro"):
         nome = st.text_input("Nome")
         data_nascimento = st.date_input("Data de Nascimento")
-        idade = st.number_input("Idade", min_value=0, max_value=150, step=1)
+        idade = st.number_input("Idade", min_value=0, max_value=150)
         cpf = st.text_input("CPF")
         rg = st.text_input("RG")
-        email = st.text_input("E-mail")
+        email = st.text_input("E‑mail")
         contato = st.text_input("Telefone")
         telefone_adicional = st.text_input("Telefone Adicional")
         endereco = st.text_input("Endereço")
@@ -71,234 +69,220 @@ def cadastro_pacientes():
         enviado = st.form_submit_button("Salvar")
     if enviado:
         adicionar_paciente(
-            nome, data_nascimento.isoformat(), idade, cpf, rg, email,
-            contato, telefone_adicional, endereco, numero, complemento,
-            bairro, cep, cidade, estado, plano_saude, historico, observacoes
+            nome,
+            data_nascimento.isoformat(),
+            idade,
+            cpf,
+            rg,
+            email,
+            contato,
+            telefone_adicional,
+            endereco,
+            numero,
+            complemento,
+            bairro,
+            cep,
+            cidade,
+            estado,
+            plano_saude,
+            historico,
+            observacoes
         )
         st.success("Paciente cadastrado com sucesso!")
 
 def agendamentos_pagina():
-    st.header("Agendamento de Consultas")
+    st.title("Agendamento de Consultas")
     pacientes = obter_pacientes()
     if not pacientes:
         st.info("Cadastre um paciente primeiro!")
         return
-    opcoes_paciente = { f"{p['id']} - {p['nome']}": p['id'] for p in pacientes }
-    selecionado = st.selectbox("Selecione o Paciente", list(opcoes_paciente.keys()))
-    paciente_id = opcoes_paciente[selecionado]
+    opcoes = {f"{p['id']} – {p['nome']}": p['id'] for p in pacientes}
+    selecionado = st.selectbox("Selecione o Paciente", list(opcoes.keys()))
+    paciente_id = opcoes[selecionado]
     with st.form("form_agendamento"):
         data_consulta = st.date_input("Data da Consulta", datetime.date.today())
         hora_consulta = st.time_input("Hora da Consulta", datetime.time(9, 0))
         observacoes = st.text_area("Observações")
-        opcoes_tipo = ["Plano de Saúde", "Particular"]
-        tipo_consulta = st.selectbox("Tipo de Consulta", opcoes_tipo)
+        tipo = st.selectbox("Tipo de Consulta", ["Plano de Saúde", "Particular"])
         enviado = st.form_submit_button("Agendar")
     if enviado:
         adicionar_agendamento(
-            paciente_id, data_consulta.isoformat(), hora_consulta.strftime("%H:%M"),
-            observacoes, tipo_consulta
+            paciente_id,
+            data_consulta.isoformat(),
+            hora_consulta.strftime("%H:%M"),
+            observacoes,
+            tipo
         )
         st.success("Consulta agendada com sucesso!")
 
 def prontuario_pagina():
-    st.header("Prontuário Eletrônico")
+    st.title("Prontuário Eletrônico")
     pacientes = obter_pacientes()
     if not pacientes:
         st.info("Cadastre um paciente primeiro!")
         return
-    opcoes_paciente = { f"{p['id']} - {p['nome']}": p['id'] for p in pacientes }
-    selecionado = st.selectbox("Selecione o Paciente", list(opcoes_paciente.keys()))
-    paciente_id = opcoes_paciente[selecionado]
+    opcoes = {f"{p['id']} – {p['nome']}": p['id'] for p in pacientes}
+    sel = st.selectbox("Selecione o Paciente", list(opcoes.keys()))
+    paciente_id = opcoes[sel]
     with st.form("form_prontuario"):
-        descricao = st.text_area("Descrição / Registro de Atendimento")
+        descricao = st.text_area("Descrição de Atendimento")
         enviado = st.form_submit_button("Salvar Registro")
     if enviado:
         adicionar_prontuario(paciente_id, descricao, datetime.date.today().isoformat())
         st.success("Registro salvo com sucesso!")
-    
     st.subheader("Histórico de Atendimentos")
-    registros = obter_prontuarios_por_paciente(paciente_id)
-    if registros:
-        df_registros = pd.DataFrame(registros)
-        exibir_tabela(df_registros)
+    regs = obter_prontuarios_por_paciente(paciente_id)
+    if regs:
+        exibir_tabela(pd.DataFrame(regs))
     else:
         st.info("Nenhum registro encontrado.")
 
 def financeiro_pagina():
-    st.header("Gestão Financeira")
+    st.title("Gestão Financeira")
     pacientes = obter_pacientes()
     if not pacientes:
         st.info("Cadastre um paciente primeiro!")
         return
-    opcoes_paciente = { f"{p['id']} - {p['nome']}": p['id'] for p in pacientes }
-    selecionado = st.selectbox("Selecione o Paciente", list(opcoes_paciente.keys()))
-    paciente_id = opcoes_paciente[selecionado]
+    opcoes = {f"{p['id']} – {p['nome']}": p['id'] for p in pacientes}
+    sel = st.selectbox("Selecione o Paciente", list(opcoes.keys()))
+    paciente_id = opcoes[sel]
     with st.form("form_financeiro"):
-        data_transacao = st.date_input("Data da Transação", datetime.date.today())
+        data_tx = st.date_input("Data da Transação", datetime.date.today())
         valor = st.number_input("Valor", min_value=0.0, step=0.1, format="%.2f")
         descricao = st.text_area("Descrição")
-        enviado = st.form_submit_button("Registrar Transação")
+        enviado = st.form_submit_button("Registrar")
     if enviado:
-        adicionar_transacao(paciente_id, data_transacao.isoformat(), valor, descricao)
-        st.success("Transação registrada!")
-    
+        adicionar_transacao(paciente_id, data_tx.isoformat(), valor, descricao)
+        st.success("Transação registrada com sucesso!")
     st.subheader("Histórico Financeiro")
-    transacoes = obter_transacoes()
-    if transacoes:
-        df_transacoes = pd.DataFrame(transacoes)
-        exibir_tabela(df_transacoes)
+    txs = obter_transacoes()
+    if txs:
+        exibir_tabela(pd.DataFrame(txs))
     else:
         st.info("Nenhuma transação registrada.")
 
 def comunicacao_pagina():
-    st.header("Comunicação com Pacientes")
+    st.title("Comunicação com Pacientes")
     pacientes = obter_pacientes()
     if not pacientes:
         st.info("Cadastre um paciente primeiro!")
         return
-    opcoes_paciente = { f"{p['id']} - {p['nome']}": p['id'] for p in pacientes }
-    selecionado = st.selectbox("Selecione o Paciente", list(opcoes_paciente.keys()))
-    paciente_id = opcoes_paciente[selecionado]
+    opcoes = {f"{p['id']} – {p['nome']}": p['id'] for p in pacientes}
+    sel = st.selectbox("Selecione o Paciente", list(opcoes.keys()))
+    paciente_id = opcoes[sel]
     with st.form("form_comunicacao"):
-        mensagem = st.text_area("Digite a mensagem")
+        mensagem = st.text_area("Mensagem")
         enviado = st.form_submit_button("Enviar")
     if enviado:
         adicionar_comunicacao(paciente_id, mensagem, datetime.datetime.now().isoformat())
-        st.success("Mensagem enviada!")
+        st.success("Mensagem enviada com sucesso!")
 
 def relatorios_pagina():
-    st.header("Relatórios e Estatísticas")
-    total_pacientes, total_agendamentos, total_financeiro = gerar_relatorio()
-    st.markdown(f"### Indicadores Gerais")
-    st.write(f"**Total de Pacientes:** {total_pacientes}")
-    st.write(f"**Total de Consultas Agendadas:** {total_agendamentos}")
-    st.write(f"**Total Financeiro:** R$ {total_financeiro:.2f}")
-    
+    st.title("Relatórios")
+    tot_pac, tot_age, tot_fin = gerar_relatorio()
+    st.write(f"**Pacientes:** {tot_pac}")
+    st.write(f"**Consultas:** {tot_age}")
+    st.write(f"**Financeiro:** R$ {tot_fin:.2f}")
     st.subheader("Consultas por Tipo")
-    rel_tipo = relatorio_por_tipo_agendamento()
-    if rel_tipo:
-        for tipo, qtde in rel_tipo.items():
-            st.write(f"{tipo}: {qtde} consulta(s)")
-    else:
-        st.info("Nenhuma consulta registrada.")
-    
-    st.subheader("Agendamentos")
-    agendamentos = obter_agendamentos()
-    if agendamentos:
-        df_agendamentos = pd.DataFrame(agendamentos)
-        exibir_tabela(df_agendamentos)
-    else:
-        st.info("Nenhuma consulta agendada.")
+    for tipo, qtd in relatorio_por_tipo_agendamento().items():
+        st.write(f"{tipo}: {qtd} consulta(s)")
 
-# --- Dashboard Completo ---
 def dashboard_pagina():
-    st.header("Dashboard Completo")
-    # Indicadores gerais
-    total_pacientes, total_agendamentos, total_financeiro = gerar_relatorio()
-    pacientes = obter_pacientes()
-    if pacientes:
-        media_idade = np.mean([p["idade"] for p in pacientes if p.get("idade") is not None])
-    else:
-        media_idade = 0
-
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Pacientes", total_pacientes)
-    col2.metric("Consultas", total_agendamentos)
-    col3.metric("Financeiro", f"R$ {total_financeiro:.2f}")
-    col4.metric("Média de Idade", f"{media_idade:.1f}")
-
+    st.title("Dashboard Completo")
+    tot_pac, tot_age, tot_fin = gerar_relatorio()
+    pacs = obter_pacientes()
+    media_idade = np.mean([p['idade'] for p in pacs if p.get('idade') is not None]) if pacs else 0
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Pacientes", tot_pac)
+    c2.metric("Consultas", tot_age)
+    c3.metric("Financeiro", f"R$ {tot_fin:.2f}")
+    c4.metric("Média de Idade", f"{media_idade:.1f}")
     st.markdown("---")
-    # Catálogo de Pacientes interativo
+
+    # Catálogo de Pacientes
     st.subheader("Catálogo de Pacientes")
-    if pacientes:
-        df_pacientes = pd.DataFrame(pacientes)
-        # Filtro simples: por cidade, por exemplo
-        cidades = df_pacientes["cidade"].unique()
-        filtro_cidade = st.multiselect("Filtrar por Cidade", cidades, default=cidades)
-        df_filtrado = df_pacientes[df_pacientes["cidade"].isin(filtro_cidade)]
-        exibir_tabela(df_filtrado)
+    if pacs:
+        df_p = pd.DataFrame(pacs)
+        cidades = df_p['cidade'].dropna().unique().tolist()
+        filtro_cidades = st.multiselect("Filtrar por Cidade", cidades, default=cidades)
+        exibir_tabela(df_p[df_p['cidade'].isin(filtro_cidades)])
     else:
         st.info("Nenhum paciente cadastrado.")
-
     st.markdown("---")
-    # Gráfico de Consultas por Mês
+
+    # Consultas por Mês
     st.subheader("Consultas por Mês")
-    agendamentos = obter_agendamentos()
-    if agendamentos:
-        df_agendamentos = pd.DataFrame(agendamentos)
-        # Converte a coluna 'data' para datetime e extrai o mês
-        df_agendamentos["data_dt"] = pd.to_datetime(df_agendamentos["data"])
-        df_agendamentos["mes"] = df_agendamentos["data_dt"].dt.to_period("M").astype(str)
-        consultas_por_mes = df_agendamentos.groupby("mes").size().reset_index(name="consultas")
-        st.bar_chart(consultas_por_mes.set_index("mes"))
+    ags = obter_agendamentos()
+    if ags:
+        df_ags = pd.DataFrame(ags)
+        df_ags['data'] = pd.to_datetime(df_ags['data'])
+        df_ags['mes'] = df_ags['data'].dt.to_period('M').astype(str)
+        contagem = df_ags.groupby('mes').size().reset_index(name='qtd')
+        st.bar_chart(contagem.set_index('mes'))
     else:
         st.info("Nenhuma consulta registrada.")
-
     st.markdown("---")
-    # Gráfico de Distribuição de Pacientes por Plano de Saúde
+
+    # Pacientes por Plano de Saúde
     st.subheader("Pacientes por Plano de Saúde")
-    if pacientes:
-        df_pacientes = pd.DataFrame(pacientes)
-        plano_contagem = df_pacientes["plano_saude"].value_counts().reset_index()
-        plano_contagem.columns = ["Plano", "Quantidade"]
-        st.plotly_chart(
-            {
-                "data": [{
-                    "labels": plano_contagem["Plano"],
-                    "values": plano_contagem["Quantidade"],
-                    "type": "pie"
-                }],
-                "layout": {"title": "Distribuição de Pacientes por Plano de Saúde"}
-            },
-            use_container_width=True
-        )
+    if pacs:
+        df_p['plano_saude'] = df_p['plano_saude'].fillna('Não informado')
+        plano_cnt = df_p['plano_saude'].value_counts().reset_index()
+        plano_cnt.columns = ['Plano', 'qtd']
+        fig = go.Figure(data=[go.Pie(labels=plano_cnt['Plano'], values=plano_cnt['qtd'])])
+        fig.update_layout(title_text="Distribuição de Pacientes por Plano de Saúde")
+        st.plotly_chart(fig, use_container_width=True)
     else:
         st.info("Nenhum paciente cadastrado.")
-
     st.markdown("---")
-    # Histograma de Idades
+
+    # Distribuição Etária dos Pacientes
     st.subheader("Distribuição Etária dos Pacientes")
-    if pacientes:
-        df_pacientes = pd.DataFrame(pacientes)
-        st.histogram(df_pacientes["idade"].dropna(), bins=10)
+    if pacs:
+        idades = [p['idade'] for p in pacs if p.get('idade') is not None]
+        bins = np.histogram_bin_edges(idades, bins=10)
+        hist, edges = np.histogram(idades, bins=bins)
+        df_hist = pd.DataFrame({
+            'faixa': [f"{int(edges[i])}-{int(edges[i+1])}" for i in range(len(edges)-1)],
+            'qtd': hist
+        })
+        st.bar_chart(df_hist.set_index('faixa'))
     else:
         st.info("Nenhum paciente cadastrado.")
 
 def laudos_pagina():
-    st.header("Emissão de Laudos")
-    pacientes = obter_pacientes()
-    if not pacientes:
+    st.title("Laudos")
+    pacs = obter_pacientes()
+    if not pacs:
         st.info("Cadastre um paciente primeiro!")
         return
-    opcoes_paciente = { f"{p['id']} - {p['nome']}": p['id'] for p in pacientes }
-    selecionado = st.selectbox("Selecione o Paciente", list(opcoes_paciente.keys()))
-    paciente_id = opcoes_paciente[selecionado]
+    op = {f"{p['id']} – {p['nome']}": p['id'] for p in pacs}
+    sel = st.selectbox("Selecione o Paciente", list(op.keys()))
+    paciente_id = op[sel]
     with st.form("form_laudo"):
-        laudo_texto = st.text_area("Digite o laudo")
+        texto = st.text_area("Laudo")
         enviado = st.form_submit_button("Emitir Laudo")
     if enviado:
-        adicionar_laudo(paciente_id, laudo_texto, datetime.date.today().isoformat())
+        adicionar_laudo(paciente_id, texto, datetime.date.today().isoformat())
         st.success("Laudo emitido com sucesso!")
-        st.subheader("Laudo Emitido:")
-        st.write(laudo_texto)
-        
-    st.subheader("Laudos Emitidos")
-    lista_laudos = obter_laudos()
-    if lista_laudos:
-        df_laudos = pd.DataFrame(lista_laudos)
-        exibir_tabela(df_laudos)
+    lds = obter_laudos()
+    if lds:
+        exibir_tabela(pd.DataFrame(lds))
     else:
         st.info("Nenhum laudo encontrado.")
 
-# --- Menu interativo usando streamlit-option-menu ---
 def main():
+    mostrar_logo()
     selected = option_menu(
-        menu_title="Menu",
-        options=["Início", "Dashboard", "Cadastro de Pacientes", "Agendamentos",
-                 "Prontuário", "Financeiro", "Comunicação", "Relatórios", "Laudos"],
-        icons=["house", "bar-chart", "person-plus", "calendar", "file-text", "wallet", "chat-dots", "clipboard-data", "file-earmark-text"],
-        menu_icon="cast",
-        default_index=0,
+        menu_title=None,
+        options=[
+            "Início", "Dashboard", "Cadastro de Pacientes", "Agendamentos",
+            "Prontuário", "Financeiro", "Comunicação", "Relatórios", "Laudos"
+        ],
+        icons=[
+            "house","bar-chart","person-plus","calendar","file-text",
+            "wallet","chat-dots","clipboard-data","file-earmark-text"
+        ],
         orientation="horizontal"
     )
 
