@@ -3,13 +3,14 @@ import datetime
 import pandas as pd
 import numpy as np
 import os
+import textwrap
 from io import BytesIO
 
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.utils import ImageReader
 
-# Dados
+# Módulos de dados
 from pacientes import adicionar_paciente, obter_pacientes
 from agendamentos import adicionar_agendamento, obter_agendamentos
 from prontuario import adicionar_prontuario, obter_prontuarios_por_paciente
@@ -73,9 +74,10 @@ def cadastro_pacientes():
     if enviar:
         adicionar_paciente(
             nome, data_nasc.isoformat(), idade,
-            cpf, rg, email, tel, tel2,
-            endereco, numero, comp, bairro, cep,
-            cidade, estado, plano, historico, obs
+            cpf, rg, email,
+            tel, tel2,
+            endereco, numero, comp, bairro, cep, cidade, estado,
+            plano, historico, obs
         )
         st.success("Paciente cadastrado com sucesso!")
 
@@ -95,8 +97,7 @@ def agendamentos_pagina():
         tipo = st.selectbox("Tipo de Consulta", ["Plano de Saúde", "Particular"])
         enviar = st.form_submit_button("Agendar")
     if enviar:
-        adicionar_agendamento(pid, data_c.isoformat(),
-                              hora_c.strftime("%H:%M"), obs, tipo)
+        adicionar_agendamento(pid, data_c.isoformat(), hora_c.strftime("%H:%M"), obs, tipo)
         st.success("Consulta agendada com sucesso!")
 
 def prontuario_pagina():
@@ -156,9 +157,9 @@ def comunicacao_pagina():
 def relatorios_pagina():
     st.title("Relatórios e Estatísticas")
     tot_p, tot_a, tot_f = gerar_relatorio()
-    st.write(f"**Pacientes:** {tot_p}")
-    st.write(f"**Consultas:** {tot_a}")
-    st.write(f"**Financeiro:** R$ {tot_f:.2f}")
+    st.write(f"Pacientes: {tot_p}")
+    st.write(f"Consultas: {tot_a}")
+    st.write(f"Financeiro: R$ {tot_f:.2f}")
     st.subheader("Consultas por Tipo")
     for t, q in relatorio_por_tipo_agendamento().items():
         st.write(f"{t}: {q} consulta(s)")
@@ -188,7 +189,6 @@ def buscar_paciente_pagina():
             op = {f"{p['id']} - {p['nome']}": p['id'] for p in matches}
             sel = st.selectbox("Ver histórico de", list(op.keys()))
             pid = op[sel]
-            st.subheader("Histórico de Atendimentos")
             regs = obter_prontuarios_por_paciente(pid)
             exibir_tabela(pd.DataFrame(regs))
         else:
@@ -201,62 +201,60 @@ def laudos_pagina():
         st.info("Cadastre um paciente primeiro!")
         return
 
-    op_p = {f"{p['id']} - {p['nome']}": p for p in pacientes}
-    sel_p = st.selectbox("Paciente", list(op_p.keys()))
-    pac = op_p[sel_p]
+    op = {f"{p['id']} - {p['nome']}": p for p in pacientes}
+    sel = st.selectbox("Paciente", list(op.keys()))
+    pac = op[sel]
 
     modelo_key = st.selectbox("Modelo de Laudo", list(LAUDOS.keys()))
     template_text = LAUDOS[modelo_key]
 
-    st.markdown("**Edite o texto. Use `{nome}` e `{data}` como placeholders.**")
+    st.markdown("Edite o texto. Use `{nome}` e `{data}` como placeholders.")
     laudo_txt = st.text_area("Conteúdo do Laudo", value=template_text, height=300)
 
     if st.button("Gerar PDF"):
-        ctx = {
-            "nome": pac["nome"],
-            "data": datetime.date.today().strftime("%d/%m/%Y")
-        }
+        ctx = {"nome": pac["nome"], "data": datetime.date.today().strftime("%d/%m/%Y")}
         rendered = laudo_txt.format(**ctx)
 
-        buf = BytesIO()
-        c = canvas.Canvas(buf, pagesize=letter)
+        buffer = BytesIO()
+        pdf = canvas.Canvas(buffer, pagesize=letter)
         w, h = letter
 
         logo = "neuro.png"
         if os.path.exists(logo):
             img = ImageReader(logo)
             lw, lh = 150, 50
-            c.drawImage(img, (w - lw) / 2, h - lh - 20, width=lw, height=lh, mask="auto")
+            pdf.drawImage(img, (w - lw) / 2, h - lh - 20, width=lw, height=lh, mask="auto")
 
-        c.setFont("Helvetica-Bold", 14)
-        c.drawCentredString(w / 2, h - lh - 40, "Consultório de Neuropediatria")
+        pdf.setFont("Helvetica-Bold", 16)
+        pdf.drawCentredString(w / 2, h - lh - 40, "Consultório de Neuropediatria")
+        pdf.setFont("Helvetica-Bold", 14)
+        pdf.drawCentredString(w / 2, h - lh - 60, "LAUDO MÉDICO")
 
-        text_obj = c.beginText(40, h - lh - 80)
+        text_obj = pdf.beginText(40, h - lh - 100)
         text_obj.setFont("Helvetica", 12)
-        text_obj.setLeading(16)
-        for line in rendered.split("\n"):
-            text_obj.textLine(line)
-        c.drawText(text_obj)
+        text_obj.setLeading(18)
+        for para in rendered.split("\n\n"):
+            for line in textwrap.wrap(para, width=95):
+                text_obj.textLine(line)
+            text_obj.textLine("")
+        pdf.drawText(text_obj)
 
-        c.showPage()
-        c.save()
-        buf.seek(0)
+        pdf.showPage()
+        pdf.save()
+        buffer.seek(0)
 
-        filename = f"laudo_{pac['nome'].replace(' ', '_')}_{ctx['data'].replace('/', '-')}.pdf"
-        st.download_button("Download do Laudo (PDF)", buf, file_name=filename, mime="application/pdf")
+        fname = f"laudo_{pac['nome'].replace(' ', '_')}_{ctx['data'].replace('/', '-')}.pdf"
+        st.download_button("Download do Laudo (PDF)", buffer, file_name=fname, mime="application/pdf")
 
 def main():
     mostrar_logo()
     choice = option_menu(
-        menu_title=None,
-        options=[
-            "Início","Dashboard","Buscar Paciente","Cadastro de Pacientes","Agendamentos",
-            "Prontuário","Financeiro","Comunicação","Relatórios","Laudos"
-        ],
-        icons=[
-            "house","bar-chart","search","person-plus","calendar","file-text",
-            "wallet","chat-dots","clipboard-data","file-earmark-text"
-        ],
+        None,
+        ["Início","Dashboard","Buscar Paciente","Cadastro de Pacientes","Agendamentos",
+         "Prontuário","Financeiro","Comunicação","Relatórios","Laudos"],
+        ["house","bar-chart","search","person-plus","calendar","file-text",
+         "wallet","chat-dots","clipboard-data","file-earmark-text"],
+        menu_icon=None,
         default_index=0,
         orientation="horizontal"
     )
