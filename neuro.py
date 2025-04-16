@@ -15,6 +15,13 @@ from relatorios import gerar_relatorio, relatorio_por_tipo_agendamento
 from streamlit_option_menu import option_menu
 from st_aggrid import AgGrid, GridOptionsBuilder
 
+
+st.set_page_config(
+    page_title="Consultório de Neuropediatria", 
+    page_icon="neuro.png",           # define o favicon
+    layout="wide"
+)
+
 # Função auxiliar para exibir DataFrames com AgGrid
 def exibir_tabela(df):
     if not df.empty:
@@ -31,6 +38,7 @@ def exibir_tabela(df):
 # --- Páginas do Sistema ---
 
 def pagina_inicial():
+    st.image("neuro.png", width=200, use_container_width=False)
     st.title("Consultório de Neuropediatria")
     st.write("Bem-vindo ao sistema de gestão do consultório!")
     st.image("https://via.placeholder.com/800x300.png?text=Dashboard+Consult%C3%B3rio", use_container_width=True)
