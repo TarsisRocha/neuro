@@ -2,7 +2,6 @@
 import streamlit as st
 import datetime
 import pandas as pd
-from banco_dados import inicializar_banco
 from pacientes import adicionar_paciente, obter_pacientes
 from agendamentos import adicionar_agendamento, obter_agendamentos
 from prontuario import adicionar_prontuario, obter_prontuarios_por_paciente
@@ -11,16 +10,15 @@ from comunicacao import adicionar_comunicacao
 from laudos import adicionar_laudo, obter_laudos
 from relatorios import gerar_relatorio, relatorio_por_tipo_agendamento
 
-# Importa os componentes para menus e tabelas interativas
+# Componentes para menus interativos e tabelas com AgGrid
 from streamlit_option_menu import option_menu
 from st_aggrid import AgGrid, GridOptionsBuilder
 
-# Inicializa o banco de dados
-inicializar_banco()
-
-# --- Funções auxiliares para exibir tabelas com AgGrid ---
+# --- Função auxiliar para exibir tabelas com AgGrid ---
 def exibir_tabela(df):
     if not df.empty:
+        # Converte os nomes das colunas para strings (evita erros de chaves do tipo int)
+        df.columns = df.columns.map(str)
         gb = GridOptionsBuilder.from_dataframe(df)
         gb.configure_pagination(paginationAutoPageSize=True)
         gb.configure_default_column(filter=True, sortable=True)
@@ -32,9 +30,10 @@ def exibir_tabela(df):
 # --- Páginas do sistema ---
 
 def pagina_inicial():
-    st.title("Clinica Gilma Montenegro")
+    st.title("Consultório de Neuropediatria")
     st.write("Bem-vindo ao sistema de gestão do consultório!")
-    st.image("https://via.placeholder.com/800x300.png?text=Dashboard+Consult%C3%B3rio", use_container_width=True)
+    st.image("https://via.placeholder.com/800x300.png?text=Dashboard+Consult%C3%B3rio",
+             use_container_width=True)
 
 def cadastro_pacientes():
     st.header("Cadastro de Pacientes")
@@ -47,7 +46,7 @@ def cadastro_pacientes():
     if enviado:
         adicionar_paciente(nome, idade, contato, historico)
         st.success("Paciente cadastrado com sucesso!")
-        
+
 def agendamentos_pagina():
     st.header("Agendamento de Consultas")
     pacientes = obter_pacientes()
@@ -65,7 +64,8 @@ def agendamentos_pagina():
         tipo_consulta = st.selectbox("Tipo de Consulta", opcoes_tipo)
         enviado = st.form_submit_button("Agendar")
     if enviado:
-        adicionar_agendamento(paciente_id, data_consulta.isoformat(), hora_consulta.strftime("%H:%M"), observacoes, tipo_consulta)
+        adicionar_agendamento(paciente_id, data_consulta.isoformat(),
+                               hora_consulta.strftime("%H:%M"), observacoes, tipo_consulta)
         st.success("Consulta agendada com sucesso!")
 
 def prontuario_pagina():
@@ -83,7 +83,7 @@ def prontuario_pagina():
     if enviado:
         adicionar_prontuario(paciente_id, descricao, datetime.date.today().isoformat())
         st.success("Registro salvo com sucesso!")
-        
+    
     st.subheader("Histórico de Atendimentos")
     registros = obter_prontuarios_por_paciente(paciente_id)
     if registros:
@@ -109,7 +109,7 @@ def financeiro_pagina():
     if enviado:
         adicionar_transacao(paciente_id, data_transacao.isoformat(), valor, descricao)
         st.success("Transação registrada!")
-        
+    
     st.subheader("Histórico Financeiro")
     transacoes = obter_transacoes()
     if transacoes:
@@ -169,7 +169,7 @@ def dashboard_pagina():
     agendamentos = obter_agendamentos()
     if agendamentos:
         from collections import Counter
-        tipos = [ag['tipo_consulta'] for ag in agendamentos if ag['tipo_consulta']]
+        tipos = [ag.get('tipo_consulta') for ag in agendamentos if ag.get('tipo_consulta')]
         contagem = Counter(tipos)
         df_tipos = pd.DataFrame(list(contagem.items()), columns=["Tipo", "Quantidade"])
         st.bar_chart(df_tipos.set_index("Tipo"))
@@ -235,4 +235,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
