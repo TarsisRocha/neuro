@@ -32,7 +32,7 @@ def exibir_tabela(df):
 # --- Páginas do sistema ---
 
 def pagina_inicial():
-    st.title("Neurpediatria Gilma Montenegro")
+    st.title("Clinica Gilma Montenegro")
     st.write("Bem-vindo ao sistema de gestão do consultório!")
     st.image("https://via.placeholder.com/800x300.png?text=Dashboard+Consult%C3%B3rio", use_column_width=True)
 
