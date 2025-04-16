@@ -5,16 +5,16 @@ import numpy as np
 import os
 from io import BytesIO
 
-# Para ler modelos de laudo
+# para ler .docx e .odt
 from docx import Document
 from odf.opendocument import load as load_odf
 from odf import text, teletype
 
-# Para gerar PDF
+# para gerar PDF
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 
-# Módulos de acesso a dados Supabase
+# módulos de dados
 from pacientes import adicionar_paciente, obter_pacientes
 from agendamentos import adicionar_agendamento, obter_agendamentos
 from prontuario import adicionar_prontuario, obter_prontuarios_por_paciente
@@ -23,14 +23,14 @@ from comunicacao import adicionar_comunicacao
 from laudos import adicionar_laudo, obter_laudos
 from relatorios import gerar_relatorio, relatorio_por_tipo_agendamento
 
-# Componentes de interface
+# UI
 from streamlit_option_menu import option_menu
 from st_aggrid import AgGrid, GridOptionsBuilder
 
 # --- Configuração da página ---
 st.set_page_config(
     page_title="Consultório de Neuropediatria",
-    page_icon="neuro.png",
+    page_icon="logo.png",
     layout="wide"
 )
 
@@ -44,9 +44,9 @@ def load_odt(path: str) -> str:
     paras = odt.getElementsByType(text.P)
     return "\n".join(teletype.extractText(p) for p in paras)
 
-# --- Componentes UI ---
+# --- Componentes de interface ---
 def mostrar_logo():
-    st.image("neuro.png", width=150)
+    st.image("logo.png", width=150)
     st.markdown("---")
 
 def exibir_tabela(df: pd.DataFrame):
@@ -91,23 +91,12 @@ def cadastro_pacientes():
             nome,
             data_nasc.isoformat(),
             idade,
-            cpf,
-            rg,
-            email,
-            tel,
-            tel2,
-            endereco,
-            numero,
-            comp,
-            bairro,
-            cep,
-            cidade,
-            estado,
-            plano,
-            historico,
-            obs
+            cpf, rg, email,
+            tel, tel2,
+            endereco, numero, comp, bairro, cep, cidade, estado,
+            plano, historico, obs
         )
-        st.success("Paciente cadastrado!")
+        st.success("Paciente cadastrado com sucesso!")
 
 def agendamentos_pagina():
     st.title("Agendamento de Consultas")
@@ -115,18 +104,18 @@ def agendamentos_pagina():
     if not pacientes:
         st.info("Cadastre um paciente primeiro!")
         return
-    op = {f"{p['id']} - {p['nome']}": p['id'] for p in pacientes}
+    op = {f"{p['id']} ‑ {p['nome']}": p['id'] for p in pacientes}
     sel = st.selectbox("Paciente", list(op.keys()))
     pid = op[sel]
     with st.form("form_agendamento"):
         data_c = st.date_input("Data da Consulta", datetime.date.today())
-        hora_c = st.time_input("Hora da Consulta", datetime.time(9, 0))
+        hora_c = st.time_input("Hora da Consulta", datetime.time(9,0))
         obs = st.text_area("Observações")
-        tipo = st.selectbox("Tipo de Consulta", ["Plano de Saúde", "Particular"])
+        tipo = st.selectbox("Tipo de Consulta", ["Plano de Saúde","Particular"])
         enviar = st.form_submit_button("Agendar")
     if enviar:
         adicionar_agendamento(pid, data_c.isoformat(), hora_c.strftime("%H:%M"), obs, tipo)
-        st.success("Consulta agendada!")
+        st.success("Consulta agendada com sucesso!")
 
 def prontuario_pagina():
     st.title("Prontuário Eletrônico")
@@ -134,7 +123,7 @@ def prontuario_pagina():
     if not pacientes:
         st.info("Cadastre um paciente primeiro!")
         return
-    op = {f"{p['id']} - {p['nome']}": p['id'] for p in pacientes}
+    op = {f"{p['id']} ‑ {p['nome']}": p['id'] for p in pacientes}
     sel = st.selectbox("Paciente", list(op.keys()))
     pid = op[sel]
     with st.form("form_prontuario"):
@@ -142,7 +131,7 @@ def prontuario_pagina():
         enviar = st.form_submit_button("Salvar")
     if enviar:
         adicionar_prontuario(pid, desc, datetime.date.today().isoformat())
-        st.success("Registro salvo!")
+        st.success("Registro salvo com sucesso!")
     regs = obter_prontuarios_por_paciente(pid)
     exibir_tabela(pd.DataFrame(regs))
 
@@ -152,7 +141,7 @@ def financeiro_pagina():
     if not pacientes:
         st.info("Cadastre um paciente primeiro!")
         return
-    op = {f"{p['id']} - {p['nome']}": p['id'] for p in pacientes}
+    op = {f"{p['id']} ‑ {p['nome']}": p['id'] for p in pacientes}
     sel = st.selectbox("Paciente", list(op.keys()))
     pid = op[sel]
     with st.form("form_financeiro"):
@@ -162,7 +151,7 @@ def financeiro_pagina():
         enviar = st.form_submit_button("Registrar")
     if enviar:
         adicionar_transacao(pid, data_f.isoformat(), valor, desc)
-        st.success("Transação registrada!")
+        st.success("Transação registrada com sucesso!")
     txs = obter_transacoes()
     exibir_tabela(pd.DataFrame(txs))
 
@@ -172,7 +161,7 @@ def comunicacao_pagina():
     if not pacientes:
         st.info("Cadastre um paciente primeiro!")
         return
-    op = {f"{p['id']} - {p['nome']}": p['id'] for p in pacientes}
+    op = {f"{p['id']} ‑ {p['nome']}": p['id'] for p in pacientes}
     sel = st.selectbox("Paciente", list(op.keys()))
     pid = op[sel]
     with st.form("form_comunicacao"):
@@ -180,7 +169,7 @@ def comunicacao_pagina():
         enviar = st.form_submit_button("Enviar")
     if enviar:
         adicionar_comunicacao(pid, msg, datetime.datetime.now().isoformat())
-        st.success("Mensagem enviada!")
+        st.success("Mensagem enviada com sucesso!")
 
 def relatorios_pagina():
     st.title("Relatórios e Estatísticas")
@@ -190,7 +179,7 @@ def relatorios_pagina():
     st.write(f"**Financeiro:** R$ {tot_f:.2f}")
     st.subheader("Consultas por Tipo")
     for t, q in relatorio_por_tipo_agendamento().items():
-        st.write(f"{t}: {q}")
+        st.write(f"{t}: {q} consulta(s)")
 
 def dashboard_pagina():
     st.title("Dashboard Completo")
@@ -210,12 +199,12 @@ def buscar_paciente_pagina():
     st.title("Buscar Paciente")
     nome = st.text_input("Digite parte do nome")
     if nome:
-        pacientes = obter_pacientes()
-        matches = [p for p in pacientes if nome.lower() in p["nome"].lower()]
+        pacs = obter_pacientes()
+        matches = [p for p in pacs if nome.lower() in p["nome"].lower()]
         if matches:
             df = pd.DataFrame(matches)
             exibir_tabela(df)
-            op = {f"{p['id']} - {p['nome']}": p['id'] for p in matches}
+            op = {f"{p['id']} ‑ {p['nome']}": p['id'] for p in matches}
             sel = st.selectbox("Ver histórico de", list(op.keys()))
             pid = op[sel]
             st.subheader("Histórico de Atendimentos")
@@ -230,10 +219,9 @@ def laudos_pagina():
     if not pacientes:
         st.info("Cadastre um paciente primeiro!")
         return
-    op = {f"{p['id']} - {p['nome']}": p for p in pacientes}
+    op = {f"{p['id']} ‑ {p['nome']}": p for p in pacientes}
     sel = st.selectbox("Paciente", list(op.keys()))
     pac = op[sel]
-    # modelos em templates/
     md = "templates"
     arquivos = [f for f in os.listdir(md) if f.lower().endswith((".docx", ".odt"))]
     if not arquivos:
@@ -260,33 +248,40 @@ def laudos_pagina():
 # --- Main ---
 def main():
     mostrar_logo()
-    opc = option_menu(
-        None,
-        ["Início","Dashboard","Buscar Paciente","Cadastro de Pacientes","Agendamentos",
-         "Prontuário","Financeiro","Comunicação","Relatórios","Laudos"],
-        ["house","bar-chart","search","person-plus","calendar",
-         "file-text","wallet","chat-dots","clipboard-data","file-earmark-text"],
-        orientation="horizontal"
+    selected = option_menu(
+        menu_title=None,
+        options=[
+            "Início","Dashboard","Buscar Paciente","Cadastro de Pacientes",
+            "Agendamentos","Prontuário","Financeiro","Comunicação",
+            "Relatórios","Laudos"
+        ],
+        icons=[
+            "house","bar-chart","search","person-plus",
+            "calendar","file-text","wallet","chat-dots",
+            "clipboard-data","file-earmark-text"
+        ],
+        orientation="horizontal",
+        default_index=0
     )
-    if opc == "Início":
+    if selected == "Início":
         pagina_inicial()
-    elif opc == "Dashboard":
+    elif selected == "Dashboard":
         dashboard_pagina()
-    elif opc == "Buscar Paciente":
+    elif selected == "Buscar Paciente":
         buscar_paciente_pagina()
-    elif opc == "Cadastro de Pacientes":
+    elif selected == "Cadastro de Pacientes":
         cadastro_pacientes()
-    elif opc == "Agendamentos":
+    elif selected == "Agendamentos":
         agendamentos_pagina()
-    elif opc == "Prontuário":
+    elif selected == "Prontuário":
         prontuario_pagina()
-    elif opc == "Financeiro":
+    elif selected == "Financeiro":
         financeiro_pagina()
-    elif opc == "Comunicação":
+    elif selected == "Comunicação":
         comunicacao_pagina()
-    elif opc == "Relatórios":
+    elif selected == "Relatórios":
         relatorios_pagina()
-    elif opc == "Laudos":
+    elif selected == "Laudos":
         laudos_pagina()
 
 if __name__ == "__main__":
