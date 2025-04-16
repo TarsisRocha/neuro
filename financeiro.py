@@ -1,20 +1,16 @@
 # financeiro.py
-from banco_dados import obter_conexao
+from banco_dados import supabase
 
 def adicionar_transacao(paciente_id, data, valor, descricao):
-    conexao = obter_conexao()
-    cursor = conexao.cursor()
-    cursor.execute(
-        'INSERT INTO financeiro (paciente_id, data, valor, descricao) VALUES (?, ?, ?, ?)',
-        (paciente_id, data, valor, descricao)
-    )
-    conexao.commit()
-    conexao.close()
+    dados = {
+        "paciente_id": paciente_id,
+        "data": data,
+        "valor": valor,
+        "descricao": descricao
+    }
+    resposta = supabase.table("financeiro").insert(dados).execute()
+    return resposta
 
 def obter_transacoes():
-    conexao = obter_conexao()
-    cursor = conexao.cursor()
-    cursor.execute('SELECT * FROM financeiro')
-    transacoes = cursor.fetchall()
-    conexao.close()
-    return transacoes
+    resposta = supabase.table("financeiro").select("*").execute()
+    return resposta.data
