@@ -1,20 +1,17 @@
 # agendamentos.py
-from banco_dados import obter_conexao
+from banco_dados import supabase
 
 def adicionar_agendamento(paciente_id, data, hora, observacoes, tipo_consulta):
-    conexao = obter_conexao()
-    cursor = conexao.cursor()
-    cursor.execute(
-        'INSERT INTO agendamentos (paciente_id, data, hora, observacoes, tipo_consulta) VALUES (?, ?, ?, ?, ?)',
-        (paciente_id, data, hora, observacoes, tipo_consulta)
-    )
-    conexao.commit()
-    conexao.close()
+    dados = {
+        "paciente_id": paciente_id,
+        "data": data,
+        "hora": hora,
+        "observacoes": observacoes,
+        "tipo_consulta": tipo_consulta
+    }
+    resposta = supabase.table("agendamentos").insert(dados).execute()
+    return resposta
 
 def obter_agendamentos():
-    conexao = obter_conexao()
-    cursor = conexao.cursor()
-    cursor.execute('SELECT * FROM agendamentos')
-    agendamentos = cursor.fetchall()
-    conexao.close()
-    return agendamentos
+    resposta = supabase.table("agendamentos").select("*").execute()
+    return resposta.data
