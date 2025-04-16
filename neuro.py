@@ -18,12 +18,12 @@ from st_aggrid import AgGrid, GridOptionsBuilder
 # Configuração da página
 st.set_page_config(
     page_title="Consultório de Neuropediatria",
-    page_icon="logo.png",
+    page_icon="neuro.png",
     layout="wide"
 )
 
 def mostrar_logo():
-    st.image("logo.png", width=200)
+    st.image("neuro.png", width=300)
     st.markdown("---")
 
 def exibir_tabela(df: pd.DataFrame):
