@@ -9,6 +9,7 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.utils import ImageReader
 
+# Dados
 from pacientes import adicionar_paciente, obter_pacientes
 from agendamentos import adicionar_agendamento, obter_agendamentos
 from prontuario import adicionar_prontuario, obter_prontuarios_por_paciente
@@ -16,13 +17,18 @@ from financeiro import adicionar_transacao, obter_transacoes
 from comunicacao import adicionar_comunicacao
 from relatorios import gerar_relatorio, relatorio_por_tipo_agendamento
 
+# Modelos de laudo
 from laudo_templates import LAUDOS
 
+# UI
 from streamlit_option_menu import option_menu
 from st_aggrid import AgGrid, GridOptionsBuilder
 
-st.set_page_config(page_title="Consultório de Neuropediatria",
-                   page_icon="neuro.png", layout="wide")
+st.set_page_config(
+    page_title="Consultório de Neuropediatria",
+    page_icon="neuro.png",
+    layout="wide"
+)
 
 def mostrar_logo():
     st.image("neuro.png", width=150)
@@ -67,10 +73,9 @@ def cadastro_pacientes():
     if enviar:
         adicionar_paciente(
             nome, data_nasc.isoformat(), idade,
-            cpf, rg, email,
-            tel, tel2, endereco, numero, comp,
-            bairro, cep, cidade, estado,
-            plano, historico, obs
+            cpf, rg, email, tel, tel2,
+            endereco, numero, comp, bairro, cep,
+            cidade, estado, plano, historico, obs
         )
         st.success("Paciente cadastrado com sucesso!")
 
@@ -92,7 +97,7 @@ def agendamentos_pagina():
     if enviar:
         adicionar_agendamento(pid, data_c.isoformat(),
                               hora_c.strftime("%H:%M"), obs, tipo)
-        st.success("Consulta agendada!")
+        st.success("Consulta agendada com sucesso!")
 
 def prontuario_pagina():
     st.title("Prontuário Eletrônico")
@@ -128,7 +133,7 @@ def financeiro_pagina():
         enviar = st.form_submit_button("Registrar")
     if enviar:
         adicionar_transacao(pid, data_f.isoformat(), valor, desc)
-        st.success("Transação registrada!")
+        st.success("Transação registrada com sucesso!")
     txs = obter_transacoes()
     exibir_tabela(pd.DataFrame(txs))
 
@@ -146,7 +151,7 @@ def comunicacao_pagina():
         enviar = st.form_submit_button("Enviar")
     if enviar:
         adicionar_comunicacao(pid, msg, datetime.datetime.now().isoformat())
-        st.success("Mensagem enviada!")
+        st.success("Mensagem enviada com sucesso!")
 
 def relatorios_pagina():
     st.title("Relatórios e Estatísticas")
@@ -221,12 +226,12 @@ def laudos_pagina():
         if os.path.exists(logo):
             img = ImageReader(logo)
             lw, lh = 150, 50
-            c.drawImage(img, (w-lw)/2, h-lh-20, width=lw, height=lh, mask="auto")
+            c.drawImage(img, (w - lw) / 2, h - lh - 20, width=lw, height=lh, mask="auto")
 
         c.setFont("Helvetica-Bold", 14)
-        c.drawCentredString(w/2, h-lh-40, "Consultório de Neuropediatria")
+        c.drawCentredString(w / 2, h - lh - 40, "Consultório de Neuropediatria")
 
-        text_obj = c.beginText(40, h-lh-80)
+        text_obj = c.beginText(40, h - lh - 80)
         text_obj.setFont("Helvetica", 12)
         text_obj.setLeading(16)
         for line in rendered.split("\n"):
@@ -237,30 +242,44 @@ def laudos_pagina():
         c.save()
         buf.seek(0)
 
-        fn = f"laudo_{pac['nome'].replace(' ','_')}_{ctx['data'].replace('/','-')}.pdf"
-        st.download_button("Download do Laudo (PDF)", buf, file_name=fn, mime="application/pdf")
+        filename = f"laudo_{pac['nome'].replace(' ', '_')}_{ctx['data'].replace('/', '-')}.pdf"
+        st.download_button("Download do Laudo (PDF)", buf, file_name=filename, mime="application/pdf")
 
 def main():
     mostrar_logo()
     choice = option_menu(
-        None,
-        ["Início","Dashboard","Buscar Paciente","Cadastro de Pacientes","Agendamentos",
-         "Prontuário","Financeiro","Comunicação","Relatórios","Laudos"],
-        ["house","bar-chart","search","person-plus","calendar","file-text",
-         "wallet","chat-dots","clipboard-data","file-earmark-text"],
+        menu_title=None,
+        options=[
+            "Início","Dashboard","Buscar Paciente","Cadastro de Pacientes","Agendamentos",
+            "Prontuário","Financeiro","Comunicação","Relatórios","Laudos"
+        ],
+        icons=[
+            "house","bar-chart","search","person-plus","calendar","file-text",
+            "wallet","chat-dots","clipboard-data","file-earmark-text"
+        ],
         default_index=0,
         orientation="horizontal"
     )
-    if choice=="Início": pagina_inicial()
-    elif choice=="Dashboard": dashboard_pagina()
-    elif choice=="Buscar Paciente": buscar_paciente_pagina()
-    elif choice=="Cadastro de Pacientes": cadastro_pacientes()
-    elif choice=="Agendamentos": agendamentos_pagina()
-    elif choice=="Prontuário": prontuario_pagina()
-    elif choice=="Financeiro": financeiro_pagina()
-    elif choice=="Comunicação": comunicacao_pagina()
-    elif choice=="Relatórios": relatorios_pagina()
-    elif choice=="Laudos": laudos_pagina()
+    if choice == "Início":
+        pagina_inicial()
+    elif choice == "Dashboard":
+        dashboard_pagina()
+    elif choice == "Buscar Paciente":
+        buscar_paciente_pagina()
+    elif choice == "Cadastro de Pacientes":
+        cadastro_pacientes()
+    elif choice == "Agendamentos":
+        agendamentos_pagina()
+    elif choice == "Prontuário":
+        prontuario_pagina()
+    elif choice == "Financeiro":
+        financeiro_pagina()
+    elif choice == "Comunicação":
+        comunicacao_pagina()
+    elif choice == "Relatórios":
+        relatorios_pagina()
+    elif choice == "Laudos":
+        laudos_pagina()
 
-if __name__=="__main__":
+if __name__ == "__main__":
     main()
