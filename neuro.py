@@ -2,6 +2,7 @@
 import streamlit as st
 import datetime
 import pandas as pd
+import numpy as np
 from pacientes import adicionar_paciente, obter_pacientes
 from agendamentos import adicionar_agendamento, obter_agendamentos
 from prontuario import adicionar_prontuario, obter_prontuarios_por_paciente
@@ -10,14 +11,15 @@ from comunicacao import adicionar_comunicacao
 from laudos import adicionar_laudo, obter_laudos
 from relatorios import gerar_relatorio, relatorio_por_tipo_agendamento
 
-# Componentes para menus interativos e tabelas com AgGrid
+# Importando os componentes para menus interativos e tabelas
 from streamlit_option_menu import option_menu
 from st_aggrid import AgGrid, GridOptionsBuilder
 
-# --- Função auxiliar para exibir tabelas com AgGrid ---
+# Função auxiliar para exibir DataFrames com AgGrid
 def exibir_tabela(df):
     if not df.empty:
-        df.columns = df.columns.map(str)  # Converte os nomes das colunas para strings
+        # Garante que os nomes das colunas sejam strings
+        df.columns = df.columns.map(str)
         gb = GridOptionsBuilder.from_dataframe(df)
         gb.configure_pagination(paginationAutoPageSize=True)
         gb.configure_default_column(filter=True, sortable=True)
@@ -26,13 +28,12 @@ def exibir_tabela(df):
     else:
         st.info("Nenhum dado para exibir.")
 
-# --- Páginas do sistema ---
+# --- Páginas do Sistema ---
 
 def pagina_inicial():
     st.title("Consultório de Neuropediatria")
     st.write("Bem-vindo ao sistema de gestão do consultório!")
-    st.image("https://via.placeholder.com/800x300.png?text=Dashboard+Consult%C3%B3rio",
-             use_container_width=True)
+    st.image("https://via.placeholder.com/800x300.png?text=Dashboard+Consult%C3%B3rio", use_container_width=True)
 
 def cadastro_pacientes():
     st.header("Cadastro de Pacientes")
@@ -57,10 +58,11 @@ def cadastro_pacientes():
         observacoes = st.text_area("Observações")
         enviado = st.form_submit_button("Salvar")
     if enviado:
-        # Converte a data de nascimento para string (ISO)
-        adicionar_paciente(nome, data_nascimento.isoformat(), idade, cpf, rg, email,
-                           contato, telefone_adicional, endereco, numero, complemento,
-                           bairro, cep, cidade, estado, plano_saude, historico, observacoes)
+        adicionar_paciente(
+            nome, data_nascimento.isoformat(), idade, cpf, rg, email,
+            contato, telefone_adicional, endereco, numero, complemento,
+            bairro, cep, cidade, estado, plano_saude, historico, observacoes
+        )
         st.success("Paciente cadastrado com sucesso!")
 
 def agendamentos_pagina():
@@ -80,8 +82,10 @@ def agendamentos_pagina():
         tipo_consulta = st.selectbox("Tipo de Consulta", opcoes_tipo)
         enviado = st.form_submit_button("Agendar")
     if enviado:
-        adicionar_agendamento(paciente_id, data_consulta.isoformat(),
-                               hora_consulta.strftime("%H:%M"), observacoes, tipo_consulta)
+        adicionar_agendamento(
+            paciente_id, data_consulta.isoformat(), hora_consulta.strftime("%H:%M"),
+            observacoes, tipo_consulta
+        )
         st.success("Consulta agendada com sucesso!")
 
 def prontuario_pagina():
@@ -153,6 +157,7 @@ def comunicacao_pagina():
 def relatorios_pagina():
     st.header("Relatórios e Estatísticas")
     total_pacientes, total_agendamentos, total_financeiro = gerar_relatorio()
+    st.markdown(f"### Indicadores Gerais")
     st.write(f"**Total de Pacientes:** {total_pacientes}")
     st.write(f"**Total de Consultas Agendadas:** {total_agendamentos}")
     st.write(f"**Total Financeiro:** R$ {total_financeiro:.2f}")
@@ -173,24 +178,79 @@ def relatorios_pagina():
     else:
         st.info("Nenhuma consulta agendada.")
 
+# --- Dashboard Completo ---
 def dashboard_pagina():
-    st.header("Dashboard")
+    st.header("Dashboard Completo")
+    # Indicadores gerais
     total_pacientes, total_agendamentos, total_financeiro = gerar_relatorio()
-    col1, col2, col3 = st.columns(3)
+    pacientes = obter_pacientes()
+    if pacientes:
+        media_idade = np.mean([p["idade"] for p in pacientes if p.get("idade") is not None])
+    else:
+        media_idade = 0
+
+    col1, col2, col3, col4 = st.columns(4)
     col1.metric("Pacientes", total_pacientes)
     col2.metric("Consultas", total_agendamentos)
     col3.metric("Financeiro", f"R$ {total_financeiro:.2f}")
-    
-    st.subheader("Gráfico: Consultas por Tipo")
+    col4.metric("Média de Idade", f"{media_idade:.1f}")
+
+    st.markdown("---")
+    # Catálogo de Pacientes interativo
+    st.subheader("Catálogo de Pacientes")
+    if pacientes:
+        df_pacientes = pd.DataFrame(pacientes)
+        # Filtro simples: por cidade, por exemplo
+        cidades = df_pacientes["cidade"].unique()
+        filtro_cidade = st.multiselect("Filtrar por Cidade", cidades, default=cidades)
+        df_filtrado = df_pacientes[df_pacientes["cidade"].isin(filtro_cidade)]
+        exibir_tabela(df_filtrado)
+    else:
+        st.info("Nenhum paciente cadastrado.")
+
+    st.markdown("---")
+    # Gráfico de Consultas por Mês
+    st.subheader("Consultas por Mês")
     agendamentos = obter_agendamentos()
     if agendamentos:
-        from collections import Counter
-        tipos = [ag.get('tipo_consulta') for ag in agendamentos if ag.get('tipo_consulta')]
-        contagem = Counter(tipos)
-        df_tipos = pd.DataFrame(list(contagem.items()), columns=["Tipo", "Quantidade"])
-        st.bar_chart(df_tipos.set_index("Tipo"))
+        df_agendamentos = pd.DataFrame(agendamentos)
+        # Converte a coluna 'data' para datetime e extrai o mês
+        df_agendamentos["data_dt"] = pd.to_datetime(df_agendamentos["data"])
+        df_agendamentos["mes"] = df_agendamentos["data_dt"].dt.to_period("M").astype(str)
+        consultas_por_mes = df_agendamentos.groupby("mes").size().reset_index(name="consultas")
+        st.bar_chart(consultas_por_mes.set_index("mes"))
     else:
-        st.info("Sem dados para o gráfico.")
+        st.info("Nenhuma consulta registrada.")
+
+    st.markdown("---")
+    # Gráfico de Distribuição de Pacientes por Plano de Saúde
+    st.subheader("Pacientes por Plano de Saúde")
+    if pacientes:
+        df_pacientes = pd.DataFrame(pacientes)
+        plano_contagem = df_pacientes["plano_saude"].value_counts().reset_index()
+        plano_contagem.columns = ["Plano", "Quantidade"]
+        st.plotly_chart(
+            {
+                "data": [{
+                    "labels": plano_contagem["Plano"],
+                    "values": plano_contagem["Quantidade"],
+                    "type": "pie"
+                }],
+                "layout": {"title": "Distribuição de Pacientes por Plano de Saúde"}
+            },
+            use_container_width=True
+        )
+    else:
+        st.info("Nenhum paciente cadastrado.")
+
+    st.markdown("---")
+    # Histograma de Idades
+    st.subheader("Distribuição Etária dos Pacientes")
+    if pacientes:
+        df_pacientes = pd.DataFrame(pacientes)
+        st.histogram(df_pacientes["idade"].dropna(), bins=10)
+    else:
+        st.info("Nenhum paciente cadastrado.")
 
 def laudos_pagina():
     st.header("Emissão de Laudos")
@@ -222,14 +282,14 @@ def laudos_pagina():
 def main():
     selected = option_menu(
         menu_title="Menu",
-        options=["Início", "Dashboard", "Cadastro de Pacientes", "Agendamentos", 
+        options=["Início", "Dashboard", "Cadastro de Pacientes", "Agendamentos",
                  "Prontuário", "Financeiro", "Comunicação", "Relatórios", "Laudos"],
         icons=["house", "bar-chart", "person-plus", "calendar", "file-text", "wallet", "chat-dots", "clipboard-data", "file-earmark-text"],
         menu_icon="cast",
         default_index=0,
         orientation="horizontal"
     )
-    
+
     if selected == "Início":
         pagina_inicial()
     elif selected == "Dashboard":
