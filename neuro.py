@@ -17,8 +17,7 @@ from st_aggrid import AgGrid, GridOptionsBuilder
 # --- Função auxiliar para exibir tabelas com AgGrid ---
 def exibir_tabela(df):
     if not df.empty:
-        # Converte os nomes das colunas para strings (evita erros de chaves do tipo int)
-        df.columns = df.columns.map(str)
+        df.columns = df.columns.map(str)  # Converte os nomes das colunas para strings
         gb = GridOptionsBuilder.from_dataframe(df)
         gb.configure_pagination(paginationAutoPageSize=True)
         gb.configure_default_column(filter=True, sortable=True)
@@ -39,12 +38,29 @@ def cadastro_pacientes():
     st.header("Cadastro de Pacientes")
     with st.form("form_cadastro"):
         nome = st.text_input("Nome")
+        data_nascimento = st.date_input("Data de Nascimento")
         idade = st.number_input("Idade", min_value=0, max_value=150, step=1)
-        contato = st.text_input("Contato")
+        cpf = st.text_input("CPF")
+        rg = st.text_input("RG")
+        email = st.text_input("E-mail")
+        contato = st.text_input("Telefone")
+        telefone_adicional = st.text_input("Telefone Adicional")
+        endereco = st.text_input("Endereço")
+        numero = st.text_input("Número")
+        complemento = st.text_input("Complemento")
+        bairro = st.text_input("Bairro")
+        cep = st.text_input("CEP")
+        cidade = st.text_input("Cidade")
+        estado = st.text_input("Estado")
+        plano_saude = st.text_input("Plano de Saúde")
         historico = st.text_area("Histórico Médico")
+        observacoes = st.text_area("Observações")
         enviado = st.form_submit_button("Salvar")
     if enviado:
-        adicionar_paciente(nome, idade, contato, historico)
+        # Converte a data de nascimento para string (ISO)
+        adicionar_paciente(nome, data_nascimento.isoformat(), idade, cpf, rg, email,
+                           contato, telefone_adicional, endereco, numero, complemento,
+                           bairro, cep, cidade, estado, plano_saude, historico, observacoes)
         st.success("Paciente cadastrado com sucesso!")
 
 def agendamentos_pagina():
