@@ -8,9 +8,9 @@ def gerar_relatorio():
     agendamentos = obter_agendamentos()
     transacoes = obter_transacoes()
     
-    total_pacientes = len(pacientes)
-    total_agendamentos = len(agendamentos)
-    total_financeiro = sum(t['valor'] for t in transacoes)
+    total_pacientes = len(pacientes) if pacientes else 0
+    total_agendamentos = len(agendamentos) if agendamentos else 0
+    total_financeiro = sum(t["valor"] for t in transacoes) if transacoes else 0
     
     return total_pacientes, total_agendamentos, total_financeiro
 
@@ -18,6 +18,7 @@ def relatorio_por_tipo_agendamento():
     agendamentos = obter_agendamentos()
     relatorio = {}
     for ag in agendamentos:
-        tipo = ag['tipo_consulta'] if ag['tipo_consulta'] is not None else "Não informado"
-        relatorio[tipo] = relatorio.get(tipo, 0) + 1
+        tipo = ag.get("tipo_consulta", "Não informado")
+        if tipo:
+            relatorio[tipo] = relatorio.get(tipo, 0) + 1
     return relatorio
