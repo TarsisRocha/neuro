@@ -23,15 +23,14 @@ from laudo_templates import LAUDOS
 from streamlit_option_menu import option_menu
 from st_aggrid import AgGrid, GridOptionsBuilder
 
-# --- Configuração da página ---
 st.set_page_config(
     page_title="Consultório de Neuropediatria",
-    page_icon="neuro.png",
+    page_icon="logo.png",
     layout="wide"
 )
 
 def mostrar_logo():
-    st.image("neuro.png", width=150)
+    st.image("logo.png", width=150)
     st.markdown("---")
 
 def exibir_tabela(df: pd.DataFrame):
@@ -44,7 +43,6 @@ def exibir_tabela(df: pd.DataFrame):
     gb.configure_default_column(filter=True, sortable=True)
     AgGrid(df, gridOptions=gb.build(), update_mode="MODEL_CHANGED")
 
-# --- Páginas ---
 def pagina_inicial():
     st.title("Início")
     st.write("Bem‑vindo ao sistema de gestão do consultório de neuropediatria.")
@@ -207,13 +205,14 @@ def laudos_pagina():
         st.info("Cadastre um paciente primeiro!")
         return
 
-    # Seleção de paciente
     op_p = {f"{p['id']} - {p['nome']}": p for p in pacientes}
     sel_p = st.selectbox("Paciente", list(op_p.keys()))
     pac = op_p[sel_p]
 
-    # Seleção de modelo
-    modelo_key = st.selectbox("Modelo de Laudo", list(LAUDOS.keys()))
+    modelo_key = st.selectbox(
+        "Modelo de Laudo",
+        list(LAUDOS.keys())
+    )
     template_text = LAUDOS[modelo_key]
 
     st.markdown("**Edite o texto. Use `{nome}` e `{data}` como placeholders.**")
@@ -228,11 +227,10 @@ def laudos_pagina():
 
         buf = BytesIO()
         c = canvas.Canvas(buf, pagesize=letter)
-        # timbre: logo no topo
         if os.path.exists("logo.png"):
             c.drawImage("logo.png", 40, letter[1] - 60, width=100, height=50, mask="auto")
-        y = letter[1] - 100
-        text_obj = c.beginText(40, y)
+        text_start = letter[1] - 100
+        text_obj = c.beginText(40, text_start)
         for line in rendered.split("\n"):
             text_obj.textLine(line)
         c.drawText(text_obj)
@@ -246,13 +244,17 @@ def laudos_pagina():
 def main():
     mostrar_logo()
     choice = option_menu(
-        None,
-        ["Início","Dashboard","Buscar Paciente","Cadastro de Pacientes","Agendamentos",
-         "Prontuário","Financeiro","Comunicação","Relatórios","Laudos"],
-        ["house","bar-chart","search","person-plus","calendar","file-text",
-         "wallet","chat-dots","clipboard-data","file-earmark-text"],
-        orientation="horizontal",
-        default_index=0
+        menu_title=None,
+        options=[
+            "Início","Dashboard","Buscar Paciente","Cadastro de Pacientes","Agendamentos",
+            "Prontuário","Financeiro","Comunicação","Relatórios","Laudos"
+        ],
+        icons=[
+            "house","bar-chart","search","person-plus","calendar","file-text",
+            "wallet","chat-dots","clipboard-data","file-earmark-text"
+        ],
+        default_index=0,
+        orientation="horizontal"
     )
     if choice == "Início":
         pagina_inicial()
