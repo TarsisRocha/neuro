@@ -18,12 +18,12 @@ from st_aggrid import AgGrid, GridOptionsBuilder
 # Configuração da página
 st.set_page_config(
     page_title="Consultório de Neuropediatria",
-    page_icon="neuro.png",
+    page_icon="logo.png",
     layout="wide"
 )
 
 def mostrar_logo():
-    st.image("neuro.png", width=300)
+    st.image("logo.png", width=200)
     st.markdown("---")
 
 def exibir_tabela(df: pd.DataFrame):
@@ -94,7 +94,7 @@ def agendamentos_pagina():
     if not pacientes:
         st.info("Cadastre um paciente primeiro!")
         return
-    opcoes = {f"{p['id']} – {p['nome']}": p['id'] for p in pacientes}
+    opcoes = {f"{p['id']} - {p['nome']}": p['id'] for p in pacientes}
     selecionado = st.selectbox("Selecione o Paciente", list(opcoes.keys()))
     paciente_id = opcoes[selecionado]
     with st.form("form_agendamento"):
@@ -119,7 +119,7 @@ def prontuario_pagina():
     if not pacientes:
         st.info("Cadastre um paciente primeiro!")
         return
-    opcoes = {f"{p['id']} – {p['nome']}": p['id'] for p in pacientes}
+    opcoes = {f"{p['id']} - {p['nome']}": p['id'] for p in pacientes}
     sel = st.selectbox("Selecione o Paciente", list(opcoes.keys()))
     paciente_id = opcoes[sel]
     with st.form("form_prontuario"):
@@ -138,7 +138,7 @@ def financeiro_pagina():
     if not pacientes:
         st.info("Cadastre um paciente primeiro!")
         return
-    opcoes = {f"{p['id']} – {p['nome']}": p['id'] for p in pacientes}
+    opcoes = {f"{p['id']} - {p['nome']}": p['id'] for p in pacientes}
     sel = st.selectbox("Selecione o Paciente", list(opcoes.keys()))
     paciente_id = opcoes[sel]
     with st.form("form_financeiro"):
@@ -159,7 +159,7 @@ def comunicacao_pagina():
     if not pacientes:
         st.info("Cadastre um paciente primeiro!")
         return
-    opcoes = {f"{p['id']} – {p['nome']}": p['id'] for p in pacientes}
+    opcoes = {f"{p['id']} - {p['nome']}": p['id'] for p in pacientes}
     sel = st.selectbox("Selecione o Paciente", list(opcoes.keys()))
     paciente_id = opcoes[sel]
     with st.form("form_comunicacao"):
@@ -188,8 +188,11 @@ def buscar_paciente_pagina():
         if matches:
             df = pd.DataFrame(matches)
             exibir_tabela(df)
-            sel = st.selectbox("Selecione o paciente para ver histórico", [f\"{p['id']} – {p['nome']}\" for p in matches])
-            paciente_id = int(sel.split(" – ")[0])
+            opção = st.selectbox(
+                "Selecione o paciente para ver histórico",
+                [f"{p['id']} - {p['nome']}" for p in matches]
+            )
+            paciente_id = int(opção.split(" - ")[0])
             st.subheader("Histórico de Atendimentos")
             regs = obter_prontuarios_por_paciente(paciente_id)
             exibir_tabela(pd.DataFrame(regs))
@@ -208,6 +211,7 @@ def dashboard_pagina():
     c4.metric("Média de Idade", f"{media_idade:.1f}")
     st.markdown("---")
 
+    # Catálogo de Pacientes com múltiplos filtros
     st.subheader("Catálogo de Pacientes")
     if pacs:
         df_p = pd.DataFrame(pacs)
@@ -226,8 +230,8 @@ def dashboard_pagina():
             df_p['idade'].between(*idade_range)
         ]
         exibir_tabela(df_filtrado)
-    st.markdown("---")
 
+    st.markdown("---")
     st.subheader("Consultas por Mês")
     ags = obter_agendamentos()
     if ags:
@@ -236,19 +240,19 @@ def dashboard_pagina():
         df_ags['mes'] = df_ags['data'].dt.to_period('M').astype(str)
         contagem = df_ags.groupby('mes').size().reset_index(name='qtd')
         st.bar_chart(contagem.set_index('mes'))
-    st.markdown("---")
 
+    st.markdown("---")
     st.subheader("Pacientes por Plano de Saúde")
     if pacs:
         df_p['plano_saude'] = df_p['plano_saude'].fillna('Não informado')
         plano_cnt = df_p['plano_saude'].value_counts().reset_index()
         plano_cnt.columns = ['Plano', 'qtd']
         fig = go.Figure(data=[go.Pie(labels=plano_cnt['Plano'], values=plano_cnt['qtd'])])
-        fig.update_layout(title_text="Distribuição de Pacientes por Plano")
+        fig.update_layout(title_text="Distribuição de Pacientes por Plano de Saúde")
         st.plotly_chart(fig, use_container_width=True)
-    st.markdown("---")
 
-    st.subheader("Distribuição Etária")
+    st.markdown("---")
+    st.subheader("Distribuição Etária dos Pacientes")
     if pacs:
         idades = [p['idade'] for p in pacs if p.get('idade') is not None]
         bins = np.histogram_bin_edges(idades, bins=10)
@@ -265,7 +269,7 @@ def laudos_pagina():
     if not pacs:
         st.info("Cadastre um paciente primeiro!")
         return
-    op = {f"{p['id']} – {p['nome']}": p['id'] for p in pacs}
+    op = {f"{p['id']} - {p['nome']}": p['id'] for p in pacs}
     sel = st.selectbox("Selecione o Paciente", list(op.keys()))
     paciente_id = op[sel]
     with st.form("form_laudo"):
@@ -287,12 +291,12 @@ def main():
             "Relatórios", "Laudos"
         ],
         icons=[
-            "house", "bar-chart", "search", "person-plus",
-            "calendar", "file-text", "wallet", "chat-dots",
-            "clipboard-data", "file-earmark-text"
+            "house","bar-chart","search","person-plus","calendar",
+            "file-text","wallet","chat-dots","clipboard-data","file-earmark-text"
         ],
         orientation="horizontal"
     )
+
     if selected == "Início":
         pagina_inicial()
     elif selected == "Dashboard":
