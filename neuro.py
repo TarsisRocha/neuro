@@ -5,23 +5,19 @@ import numpy as np
 import os
 from io import BytesIO
 
-# para ler .docx e .odt
-from docx import Document
-from odf.opendocument import load as load_odf
-from odf import text, teletype
-
-# para gerar PDF
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 
-# módulos de dados
+# Módulos de dados
 from pacientes import adicionar_paciente, obter_pacientes
 from agendamentos import adicionar_agendamento, obter_agendamentos
 from prontuario import adicionar_prontuario, obter_prontuarios_por_paciente
 from financeiro import adicionar_transacao, obter_transacoes
 from comunicacao import adicionar_comunicacao
-from laudos import adicionar_laudo, obter_laudos
 from relatorios import gerar_relatorio, relatorio_por_tipo_agendamento
+
+# Templates de laudo
+from laudo_templates import LAUDOS
 
 # UI
 from streamlit_option_menu import option_menu
@@ -34,17 +30,6 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- Helpers de template ---
-def load_docx(path: str) -> str:
-    doc = Document(path)
-    return "n".join(p.text for p in doc.paragraphs)
-
-def load_odt(path: str) -> str:
-    odt = load_odf(path)
-    paras = odt.getElementsByType(text.P)
-    return "\n".join(teletype.extractText(p) for p in paras)
-
-# --- Componentes de interface ---
 def mostrar_logo():
     st.image("neuro.png", width=150)
     st.markdown("---")
@@ -93,7 +78,8 @@ def cadastro_pacientes():
             idade,
             cpf, rg, email,
             tel, tel2,
-            endereco, numero, comp, bairro, cep, cidade, estado,
+            endereco, numero, comp,
+            bairro, cep, cidade, estado,
             plano, historico, obs
         )
         st.success("Paciente cadastrado com sucesso!")
@@ -104,17 +90,18 @@ def agendamentos_pagina():
     if not pacientes:
         st.info("Cadastre um paciente primeiro!")
         return
-    op = {f"{p['id']} ‑ {p['nome']}": p['id'] for p in pacientes}
+    op = {f"{p['id']} - {p['nome']}": p['id'] for p in pacientes}
     sel = st.selectbox("Paciente", list(op.keys()))
     pid = op[sel]
     with st.form("form_agendamento"):
         data_c = st.date_input("Data da Consulta", datetime.date.today())
-        hora_c = st.time_input("Hora da Consulta", datetime.time(9,0))
+        hora_c = st.time_input("Hora da Consulta", datetime.time(9, 0))
         obs = st.text_area("Observações")
-        tipo = st.selectbox("Tipo de Consulta", ["Plano de Saúde","Particular"])
+        tipo = st.selectbox("Tipo de Consulta", ["Plano de Saúde", "Particular"])
         enviar = st.form_submit_button("Agendar")
     if enviar:
-        adicionar_agendamento(pid, data_c.isoformat(), hora_c.strftime("%H:%M"), obs, tipo)
+        adicionar_agendamento(pid, data_c.isoformat(),
+                              hora_c.strftime("%H:%M"), obs, tipo)
         st.success("Consulta agendada com sucesso!")
 
 def prontuario_pagina():
@@ -123,7 +110,7 @@ def prontuario_pagina():
     if not pacientes:
         st.info("Cadastre um paciente primeiro!")
         return
-    op = {f"{p['id']} ‑ {p['nome']}": p['id'] for p in pacientes}
+    op = {f"{p['id']} - {p['nome']}": p['id'] for p in pacientes}
     sel = st.selectbox("Paciente", list(op.keys()))
     pid = op[sel]
     with st.form("form_prontuario"):
@@ -141,7 +128,7 @@ def financeiro_pagina():
     if not pacientes:
         st.info("Cadastre um paciente primeiro!")
         return
-    op = {f"{p['id']} ‑ {p['nome']}": p['id'] for p in pacientes}
+    op = {f"{p['id']} - {p['nome']}": p['id'] for p in pacientes}
     sel = st.selectbox("Paciente", list(op.keys()))
     pid = op[sel]
     with st.form("form_financeiro"):
@@ -161,7 +148,7 @@ def comunicacao_pagina():
     if not pacientes:
         st.info("Cadastre um paciente primeiro!")
         return
-    op = {f"{p['id']} ‑ {p['nome']}": p['id'] for p in pacientes}
+    op = {f"{p['id']} - {p['nome']}": p['id'] for p in pacientes}
     sel = st.selectbox("Paciente", list(op.keys()))
     pid = op[sel]
     with st.form("form_comunicacao"):
@@ -204,7 +191,7 @@ def buscar_paciente_pagina():
         if matches:
             df = pd.DataFrame(matches)
             exibir_tabela(df)
-            op = {f"{p['id']} ‑ {p['nome']}": p['id'] for p in matches}
+            op = {f"{p['id']} - {p['nome']}": p['id'] for p in matches}
             sel = st.selectbox("Ver histórico de", list(op.keys()))
             pid = op[sel]
             st.subheader("Histórico de Atendimentos")
@@ -219,69 +206,73 @@ def laudos_pagina():
     if not pacientes:
         st.info("Cadastre um paciente primeiro!")
         return
-    op = {f"{p['id']} ‑ {p['nome']}": p for p in pacientes}
-    sel = st.selectbox("Paciente", list(op.keys()))
-    pac = op[sel]
-    md = "templates"
-    arquivos = [f for f in os.listdir(md) if f.lower().endswith((".docx", ".odt"))]
-    if not arquivos:
-        st.error("Coloque seus modelos em 'templates/'")
-        return
-    modelo = st.selectbox("Modelo de Laudo", arquivos)
-    path = os.path.join(md, modelo)
-    texto = load_docx(path) if modelo.lower().endswith(".docx") else load_odt(path)
+
+    # Seleção de paciente
+    op_p = {f"{p['id']} - {p['nome']}": p for p in pacientes}
+    sel_p = st.selectbox("Paciente", list(op_p.keys()))
+    pac = op_p[sel_p]
+
+    # Seleção de modelo
+    modelo_key = st.selectbox("Modelo de Laudo", list(LAUDOS.keys()))
+    template_text = LAUDOS[modelo_key]
+
     st.markdown("**Edite o texto. Use `{nome}` e `{data}` como placeholders.**")
-    laudo_txt = st.text_area("Conteúdo do Laudo", value=texto, height=300)
+    laudo_txt = st.text_area("Conteúdo do Laudo", value=template_text, height=300)
+
     if st.button("Gerar PDF"):
-        ctx = {"nome": pac["nome"], "data": datetime.date.today().strftime("%d/%m/%Y")}
-        rend = laudo_txt.format(**ctx)
+        ctx = {
+            "nome": pac["nome"],
+            "data": datetime.date.today().strftime("%d/%m/%Y")
+        }
+        rendered = laudo_txt.format(**ctx)
+
         buf = BytesIO()
         c = canvas.Canvas(buf, pagesize=letter)
-        t = c.beginText(40, 750)
-        for line in rend.split("\n"):
-            t.textLine(line)
-        c.drawText(t); c.showPage(); c.save()
+        # timbre: logo no topo
+        if os.path.exists("logo.png"):
+            c.drawImage("logo.png", 40, letter[1] - 60, width=100, height=50, mask="auto")
+        y = letter[1] - 100
+        text_obj = c.beginText(40, y)
+        for line in rendered.split("\n"):
+            text_obj.textLine(line)
+        c.drawText(text_obj)
+        c.showPage()
+        c.save()
         buf.seek(0)
-        fn = f"laudo_{pac['nome'].replace(' ','_')}_{ctx['data'].replace('/','-')}.pdf"
-        st.download_button("Download PDF", buf, file_name=fn, mime="application/pdf")
 
-# --- Main ---
+        filename = f"laudo_{pac['nome'].replace(' ', '_')}_{ctx['data'].replace('/', '-')}.pdf"
+        st.download_button("Download do Laudo", buf, file_name=filename, mime="application/pdf")
+
 def main():
     mostrar_logo()
-    selected = option_menu(
-        menu_title=None,
-        options=[
-            "Início","Dashboard","Buscar Paciente","Cadastro de Pacientes",
-            "Agendamentos","Prontuário","Financeiro","Comunicação",
-            "Relatórios","Laudos"
-        ],
-        icons=[
-            "house","bar-chart","search","person-plus",
-            "calendar","file-text","wallet","chat-dots",
-            "clipboard-data","file-earmark-text"
-        ],
+    choice = option_menu(
+        None,
+        ["Início","Dashboard","Buscar Paciente","Cadastro de Pacientes","Agendamentos",
+         "Prontuário","Financeiro","Comunicação","Relatórios","Laudos"],
+        ["house","bar-chart","search","person-plus","calendar","file-text",
+         "wallet","chat-dots","clipboard-data","file-earmark-text"],
         orientation="horizontal",
         default_index=0
     )
-    if selected == "Início":
+    if choice == "Início":
         pagina_inicial()
-    elif selected == "Dashboard":
+    elif choice == "Dashboard":
         dashboard_pagina()
-    elif selected == "Buscar Paciente":
+    elif choice == "Buscar Paciente":
         buscar_paciente_pagina()
-    elif selected == "Cadastro de Pacientes":
+    elif choice == "Cadastro de Pacientes":
         cadastro_pacientes()
-    elif selected == "Agendamentos":
+    elif choice == "Agendamentos":
         agendamentos_pagina()
-    elif selected == "Prontuário":
+    elif choice == "Prontuário":
         prontuario_pagina()
-    elif selected == "Financeiro":
+    elif choice == "Financeiro":
         financeiro_pagina()
-    elif selected == "Comunicação":
+    elif choice == "Comunicação":
         comunicacao_pagina()
-    elif selected == "Relatórios":
+    elif choice == "Relatórios":
         relatorios_pagina()
-    elif selected == "Laudos":
+    elif choice == "Laudos":
         laudos_pagina()
 
 if __name__ == "__main__":
