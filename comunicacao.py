@@ -1,20 +1,15 @@
 # comunicacao.py
-from banco_dados import obter_conexao
+from banco_dados import supabase
 
 def adicionar_comunicacao(paciente_id, mensagem, data):
-    conexao = obter_conexao()
-    cursor = conexao.cursor()
-    cursor.execute(
-        'INSERT INTO comunicacoes (paciente_id, mensagem, data) VALUES (?, ?, ?)',
-        (paciente_id, mensagem, data)
-    )
-    conexao.commit()
-    conexao.close()
+    dados = {
+        "paciente_id": paciente_id,
+        "mensagem": mensagem,
+        "data": data
+    }
+    resposta = supabase.table("comunicacoes").insert(dados).execute()
+    return resposta
 
 def obter_comunicacoes():
-    conexao = obter_conexao()
-    cursor = conexao.cursor()
-    cursor.execute('SELECT * FROM comunicacoes')
-    comunicacoes = cursor.fetchall()
-    conexao.close()
-    return comunicacoes
+    resposta = supabase.table("comunicacoes").select("*").execute()
+    return resposta.data
