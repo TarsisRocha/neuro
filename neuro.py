@@ -18,13 +18,13 @@ from st_aggrid import AgGrid, GridOptionsBuilder
 # Configuração da página
 st.set_page_config(
     page_title="Consultório de Neuropediatria",
-    page_icon="logo.png",
+    page_icon="neuro.png",
     layout="wide"
 )
 
 # Função para exibir logo fixa no topo
 def mostrar_logo():
-    st.image("logo.png", width=200)
+    st.image("neuro.png", width=200)
     st.markdown("---")
 
 # Função auxiliar para exibir DataFrames com AgGrid
