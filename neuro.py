@@ -27,7 +27,7 @@ from streamlit_option_menu import option_menu
 from st_aggrid import AgGrid, GridOptionsBuilder
 
 st.set_page_config(
-    page_title="Consultório de Neuropediatria",
+    page_title="Clinica Dra. Gilma Montenegro",
     page_icon="neuro.png",
     layout="wide"
 )
