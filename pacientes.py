@@ -1,20 +1,16 @@
 # pacientes.py
-from banco_dados import obter_conexao
+from banco_dados import supabase
 
 def adicionar_paciente(nome, idade, contato, historico):
-    conexao = obter_conexao()
-    cursor = conexao.cursor()
-    cursor.execute(
-        'INSERT INTO pacientes (nome, idade, contato, historico) VALUES (?, ?, ?, ?)',
-        (nome, idade, contato, historico)
-    )
-    conexao.commit()
-    conexao.close()
+    dados = {
+        "nome": nome,
+        "idade": idade,
+        "contato": contato,
+        "historico": historico
+    }
+    resposta = supabase.table("pacientes").insert(dados).execute()
+    return resposta
 
 def obter_pacientes():
-    conexao = obter_conexao()
-    cursor = conexao.cursor()
-    cursor.execute('SELECT * FROM pacientes')
-    pacientes = cursor.fetchall()
-    conexao.close()
-    return pacientes
+    resposta = supabase.table("pacientes").select("*").execute()
+    return resposta.data
