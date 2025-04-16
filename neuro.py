@@ -22,13 +22,11 @@ st.set_page_config(
     layout="wide"
 )
 
-# Função para exibir logo fixa no topo
 def mostrar_logo():
-    st.image("neuro.png", width=200)
+    st.image("neuro.png", width=300)
     st.markdown("---")
 
-# Função auxiliar para exibir DataFrames com AgGrid
-def exibir_tabela(df):
+def exibir_tabela(df: pd.DataFrame):
     if not df.empty:
         df.columns = df.columns.map(str)
         gb = GridOptionsBuilder.from_dataframe(df)
@@ -39,7 +37,7 @@ def exibir_tabela(df):
     else:
         st.info("Nenhum dado para exibir.")
 
-# Páginas do sistema
+# --- Páginas ---
 
 def pagina_inicial():
     st.title("Início")
@@ -96,7 +94,7 @@ def agendamentos_pagina():
     if not pacientes:
         st.info("Cadastre um paciente primeiro!")
         return
-    opcoes = {f"{p['id']} – {p['nome']}": p['id'] for p in pacientes}
+    opcoes = {f"{p['id']} – {p['nome']}": p['id'] for p in pacientes}
     selecionado = st.selectbox("Selecione o Paciente", list(opcoes.keys()))
     paciente_id = opcoes[selecionado]
     with st.form("form_agendamento"):
@@ -121,7 +119,7 @@ def prontuario_pagina():
     if not pacientes:
         st.info("Cadastre um paciente primeiro!")
         return
-    opcoes = {f"{p['id']} – {p['nome']}": p['id'] for p in pacientes}
+    opcoes = {f"{p['id']} – {p['nome']}": p['id'] for p in pacientes}
     sel = st.selectbox("Selecione o Paciente", list(opcoes.keys()))
     paciente_id = opcoes[sel]
     with st.form("form_prontuario"):
@@ -132,10 +130,7 @@ def prontuario_pagina():
         st.success("Registro salvo com sucesso!")
     st.subheader("Histórico de Atendimentos")
     regs = obter_prontuarios_por_paciente(paciente_id)
-    if regs:
-        exibir_tabela(pd.DataFrame(regs))
-    else:
-        st.info("Nenhum registro encontrado.")
+    exibir_tabela(pd.DataFrame(regs))
 
 def financeiro_pagina():
     st.title("Gestão Financeira")
@@ -143,7 +138,7 @@ def financeiro_pagina():
     if not pacientes:
         st.info("Cadastre um paciente primeiro!")
         return
-    opcoes = {f"{p['id']} – {p['nome']}": p['id'] for p in pacientes}
+    opcoes = {f"{p['id']} – {p['nome']}": p['id'] for p in pacientes}
     sel = st.selectbox("Selecione o Paciente", list(opcoes.keys()))
     paciente_id = opcoes[sel]
     with st.form("form_financeiro"):
@@ -156,10 +151,7 @@ def financeiro_pagina():
         st.success("Transação registrada com sucesso!")
     st.subheader("Histórico Financeiro")
     txs = obter_transacoes()
-    if txs:
-        exibir_tabela(pd.DataFrame(txs))
-    else:
-        st.info("Nenhuma transação registrada.")
+    exibir_tabela(pd.DataFrame(txs))
 
 def comunicacao_pagina():
     st.title("Comunicação com Pacientes")
@@ -167,7 +159,7 @@ def comunicacao_pagina():
     if not pacientes:
         st.info("Cadastre um paciente primeiro!")
         return
-    opcoes = {f"{p['id']} – {p['nome']}": p['id'] for p in pacientes}
+    opcoes = {f"{p['id']} – {p['nome']}": p['id'] for p in pacientes}
     sel = st.selectbox("Selecione o Paciente", list(opcoes.keys()))
     paciente_id = opcoes[sel]
     with st.form("form_comunicacao"):
@@ -187,6 +179,23 @@ def relatorios_pagina():
     for tipo, qtd in relatorio_por_tipo_agendamento().items():
         st.write(f"{tipo}: {qtd} consulta(s)")
 
+def buscar_paciente_pagina():
+    st.title("Buscar Paciente")
+    nome_busca = st.text_input("Digite o nome do paciente")
+    if nome_busca:
+        pacientes = obter_pacientes()
+        matches = [p for p in pacientes if nome_busca.lower() in p["nome"].lower()]
+        if matches:
+            df = pd.DataFrame(matches)
+            exibir_tabela(df)
+            sel = st.selectbox("Selecione o paciente para ver histórico", [f\"{p['id']} – {p['nome']}\" for p in matches])
+            paciente_id = int(sel.split(" – ")[0])
+            st.subheader("Histórico de Atendimentos")
+            regs = obter_prontuarios_por_paciente(paciente_id)
+            exibir_tabela(pd.DataFrame(regs))
+        else:
+            st.warning("Nenhum paciente encontrado com esse nome.")
+
 def dashboard_pagina():
     st.title("Dashboard Completo")
     tot_pac, tot_age, tot_fin = gerar_relatorio()
@@ -199,18 +208,26 @@ def dashboard_pagina():
     c4.metric("Média de Idade", f"{media_idade:.1f}")
     st.markdown("---")
 
-    # Catálogo de Pacientes
     st.subheader("Catálogo de Pacientes")
     if pacs:
         df_p = pd.DataFrame(pacs)
         cidades = df_p['cidade'].dropna().unique().tolist()
+        estados = df_p['estado'].dropna().unique().tolist()
+        planos = df_p['plano_saude'].dropna().unique().tolist()
+        min_id, max_id = int(df_p['idade'].min()), int(df_p['idade'].max())
+        idade_range = st.slider("Faixa de Idade", min_id, max_id, (min_id, max_id))
         filtro_cidades = st.multiselect("Filtrar por Cidade", cidades, default=cidades)
-        exibir_tabela(df_p[df_p['cidade'].isin(filtro_cidades)])
-    else:
-        st.info("Nenhum paciente cadastrado.")
+        filtro_estados = st.multiselect("Filtrar por Estado", estados, default=estados)
+        filtro_planos = st.multiselect("Filtrar por Plano de Saúde", planos, default=planos)
+        df_filtrado = df_p[
+            df_p['cidade'].isin(filtro_cidades) &
+            df_p['estado'].isin(filtro_estados) &
+            df_p['plano_saude'].isin(filtro_planos) &
+            df_p['idade'].between(*idade_range)
+        ]
+        exibir_tabela(df_filtrado)
     st.markdown("---")
 
-    # Consultas por Mês
     st.subheader("Consultas por Mês")
     ags = obter_agendamentos()
     if ags:
@@ -219,25 +236,19 @@ def dashboard_pagina():
         df_ags['mes'] = df_ags['data'].dt.to_period('M').astype(str)
         contagem = df_ags.groupby('mes').size().reset_index(name='qtd')
         st.bar_chart(contagem.set_index('mes'))
-    else:
-        st.info("Nenhuma consulta registrada.")
     st.markdown("---")
 
-    # Pacientes por Plano de Saúde
     st.subheader("Pacientes por Plano de Saúde")
     if pacs:
         df_p['plano_saude'] = df_p['plano_saude'].fillna('Não informado')
         plano_cnt = df_p['plano_saude'].value_counts().reset_index()
         plano_cnt.columns = ['Plano', 'qtd']
         fig = go.Figure(data=[go.Pie(labels=plano_cnt['Plano'], values=plano_cnt['qtd'])])
-        fig.update_layout(title_text="Distribuição de Pacientes por Plano de Saúde")
+        fig.update_layout(title_text="Distribuição de Pacientes por Plano")
         st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("Nenhum paciente cadastrado.")
     st.markdown("---")
 
-    # Distribuição Etária dos Pacientes
-    st.subheader("Distribuição Etária dos Pacientes")
+    st.subheader("Distribuição Etária")
     if pacs:
         idades = [p['idade'] for p in pacs if p.get('idade') is not None]
         bins = np.histogram_bin_edges(idades, bins=10)
@@ -247,8 +258,6 @@ def dashboard_pagina():
             'qtd': hist
         })
         st.bar_chart(df_hist.set_index('faixa'))
-    else:
-        st.info("Nenhum paciente cadastrado.")
 
 def laudos_pagina():
     st.title("Laudos")
@@ -256,7 +265,7 @@ def laudos_pagina():
     if not pacs:
         st.info("Cadastre um paciente primeiro!")
         return
-    op = {f"{p['id']} – {p['nome']}": p['id'] for p in pacs}
+    op = {f"{p['id']} – {p['nome']}": p['id'] for p in pacs}
     sel = st.selectbox("Selecione o Paciente", list(op.keys()))
     paciente_id = op[sel]
     with st.form("form_laudo"):
@@ -266,30 +275,30 @@ def laudos_pagina():
         adicionar_laudo(paciente_id, texto, datetime.date.today().isoformat())
         st.success("Laudo emitido com sucesso!")
     lds = obter_laudos()
-    if lds:
-        exibir_tabela(pd.DataFrame(lds))
-    else:
-        st.info("Nenhum laudo encontrado.")
+    exibir_tabela(pd.DataFrame(lds))
 
 def main():
     mostrar_logo()
     selected = option_menu(
         menu_title=None,
         options=[
-            "Início", "Dashboard", "Cadastro de Pacientes", "Agendamentos",
-            "Prontuário", "Financeiro", "Comunicação", "Relatórios", "Laudos"
+            "Início", "Dashboard", "Buscar Paciente", "Cadastro de Pacientes",
+            "Agendamentos", "Prontuário", "Financeiro", "Comunicação",
+            "Relatórios", "Laudos"
         ],
         icons=[
-            "house","bar-chart","person-plus","calendar","file-text",
-            "wallet","chat-dots","clipboard-data","file-earmark-text"
+            "house", "bar-chart", "search", "person-plus",
+            "calendar", "file-text", "wallet", "chat-dots",
+            "clipboard-data", "file-earmark-text"
         ],
         orientation="horizontal"
     )
-
     if selected == "Início":
         pagina_inicial()
     elif selected == "Dashboard":
         dashboard_pagina()
+    elif selected == "Buscar Paciente":
+        buscar_paciente_pagina()
     elif selected == "Cadastro de Pacientes":
         cadastro_pacientes()
     elif selected == "Agendamentos":
