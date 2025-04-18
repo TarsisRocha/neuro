@@ -27,13 +27,13 @@ st.set_page_config(
 )
 
 # ---- Autenticação ----
-import auth  # módulo auth.py conforme implementado
+import auth  # deve existir auth.py conforme instruído
 
 auth_data   = auth.login()
 user_key    = auth_data["user"]
 user_name   = auth_data["name"]
 role        = auth_data["role"]            # 'admin' ou 'paciente'
-paciente_id = auth_data.get("pid")         # para pacientes, se disponível
+paciente_id = auth_data.get("pid")         # para pacientes
 
 st.sidebar.success(f"Logado como {user_name} ({role})")
 if st.sidebar.button("Sair"):
@@ -58,15 +58,17 @@ def aggrid_table(df: pd.DataFrame):
     gb.configure_default_column(filter=True, sortable=True)
     AgGrid(df, gridOptions=gb.build(), update_mode="MODEL_CHANGED")
 
-# ---- Função de geração de PDF para laudos ----
+# ---- Geração de PDF para laudos ----
 def gerar_pdf_laudo(texto: str, nome_pac: str):
     data_str = datetime.date.today().strftime("%d-%m-%Y")
     buf = BytesIO()
     pdf = pdfcanvas.Canvas(buf, pagesize=letter)
     w, h = letter
     if LOGO_FILE.exists():
-        pdf.drawImage(ImageReader(str(LOGO_FILE)),
-                      (w-150)/2, h-70, width=150, height=50, mask="auto")
+        pdf.drawImage(
+            ImageReader(str(LOGO_FILE)),
+            (w-150)/2, h-70, width=150, height=50, mask="auto"
+        )
     pdf.setFont("Helvetica-Bold", 16)
     pdf.drawCentredString(w/2, h-90, "Consultório de Neuropediatria")
     pdf.setFont("Helvetica-Bold", 14)
@@ -104,19 +106,39 @@ def page_pacientes():
     with st.expander("Novo paciente"):
         with st.form("cadpac"):
             nome = st.text_input("Nome completo")
-            nasc = st.date_input("Nascimento")
-            idade = st.number_input("Idade", 0, 150)
-            email = st.text_input("Email")
+            data_nasc_str = st.text_input("Data de nascimento (DD/MM/AAAA)")
+            data_nasc = None
+            idade = None
+            if data_nasc_str:
+                try:
+                    data_nasc = datetime.datetime.strptime(
+                        data_nasc_str, "%d/%m/%Y"
+                    ).date()
+                    hoje = datetime.date.today()
+                    idade = hoje.year - data_nasc.year - (
+                        (hoje.month, hoje.day) < (data_nasc.month, data_nasc.day)
+                    )
+                    st.write(f"Idade calculada: {idade} anos")
+                except ValueError:
+                    st.error("Formato inválido! Use DD/MM/AAAA")
+            email = st.text_input("E‑mail")
+            plano = st.text_input("Plano de Saúde")
             ok = st.form_submit_button("Salvar")
         if ok:
-            pacientes.adicionar_paciente(
-                nome, nasc.isoformat(), idade,
-                "","",email,
-                "","","","","",
-                "","","","",  # campos vazios
-                "",""
-            )
-            st.success("Paciente cadastrado!")
+            if not nome or not data_nasc:
+                st.error("Preencha nome e data corretamente.")
+            else:
+                pacientes.adicionar_paciente(
+                    nome,
+                    data_nasc.isoformat(),
+                    idade,
+                    "", "", email,
+                    "", "",
+                    "", "", "", "", "", "", "",
+                    plano,
+                    "", ""
+                )
+                st.success("Paciente cadastrado!")
     df = pd.DataFrame(pacientes.obter_pacientes())
     aggrid_table(df)
 
