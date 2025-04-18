@@ -1,77 +1,43 @@
-# agendamentos.py – Acesso à tabela “agendamentos” no Supabase
-# ------------------------------------------------------------
-# Funções expostas:
-#   • adicionar_agendamento(...)
-#   • obter_agendamentos()
-#   • obter_agendamentos_por_paciente(paciente_id)
-# ------------------------------------------------------------
-
-import os
+import os, streamlit as st
+from datetime import datetime
 from typing import List, Dict
 from supabase import create_client, Client
-import streamlit as st
-from datetime import datetime
 
-# ───────────── Conexão Supabase ─────────────
 SUPABASE_URL = os.getenv("SUPABASE_URL") or st.secrets.get("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY") or st.secrets.get("SUPABASE_KEY")
-
 if not SUPABASE_URL or not SUPABASE_KEY:
-    raise RuntimeError(
-        "Defina SUPABASE_URL e SUPABASE_KEY nas variáveis de ambiente "
-        "ou em st.secrets."
-    )
+    raise RuntimeError("Defina SUPABASE_URL e SUPABASE_KEY em env ou Secrets.")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 TBL = "agendamentos"
 
-
-def _table():
+def _tbl():
     return supabase.table(TBL)
 
-
-# ---------- CREATE ----------
 def adicionar_agendamento(
-    paciente_id: int,
-    data_consulta: str,              # "YYYY-MM-DD"
-    hora_consulta: str,              # "HH:MM"
-    observacao: str,
-    tipo_consulta: str               # "Plano de Saúde" / "Particular"
+    pid: int, data_iso: str, hora: str,
+    obs: str, tipo: str
 ) -> int:
-    """Insere agendamento e devolve o ID gerado."""
-    dados = {
-        "paciente_id": paciente_id,
-        "data_consulta": data_consulta,
-        "hora_consulta": hora_consulta,
-        "observacao": observacao,
-        "tipo_consulta": tipo_consulta,
+    item = {
+        "paciente_id": pid,
+        "data_consulta": data_iso,
+        "hora_consulta": hora,
+        "observacao": obs,
+        "tipo_consulta": tipo,
         "criado_em": datetime.utcnow().isoformat()
     }
-    res = _table().insert(dados).execute()
+    res = _tbl().insert(item).execute()
     return res.data[0]["id"]
 
-
-# ---------- READ ----------
 def obter_agendamentos() -> List[Dict]:
-    """Lista todos os agendamentos ordenados por data/hora."""
-    res = (
-        _table()
-        .select("*")
-        .order("data_consulta")
-        .order("hora_consulta")
-        .execute()
-    )
-    return res.data or []
+    return _tbl().select("*")\
+                 .order("data_consulta")\
+                 .order("hora_consulta")\
+                 .execute().data or []
 
-
-def obter_agendamentos_por_paciente(paciente_id: int) -> List[Dict]:
-    """Lista agendamentos de um paciente específico."""
-    res = (
-        _table()
-        .select("*")
-        .eq("paciente_id", paciente_id)
-        .order("data_consulta")
-        .order("hora_consulta")
-        .execute()
-    )
-    return res.data or []
+def obter_agendamentos_por_paciente(pid: int) -> List[Dict]:
+    return _tbl().select("*")\
+                 .eq("paciente_id", pid)\
+                 .order("data_consulta")\
+                 .order("hora_consulta")\
+                 .execute().data or []
