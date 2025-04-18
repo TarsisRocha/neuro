@@ -1,13 +1,15 @@
-# users.py — CRUD para tabela 'usuarios'
-# --------------------------------------
 import os, streamlit as st, bcrypt
 from typing import Dict, List, Optional
 from datetime import datetime
 from supabase import create_client, Client
 
-URL = os.getenv("SUPABASE_URL") or st.secrets["SUPABASE_URL"]
-KEY = os.getenv("SUPABASE_KEY") or st.secrets["SUPABASE_KEY"]
-supabase: Client = create_client(URL, KEY)
+# Conexão Supabase
+SUPABASE_URL = os.getenv("SUPABASE_URL") or st.secrets.get("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY") or st.secrets.get("SUPABASE_KEY")
+if not SUPABASE_URL or not SUPABASE_KEY:
+    raise RuntimeError("Defina SUPABASE_URL e SUPABASE_KEY em env ou Secrets.")
+
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 TBL = "usuarios"
 
 def _tbl():
