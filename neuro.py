@@ -42,7 +42,6 @@ st.sidebar.success(f"Logado como {user_name} ({role})")
 if st.sidebar.button("Sair"):
     st.session_state.pop("auth", None)
     st.experimental_rerun()
-
 if LOGO_FILE.exists():
     st.sidebar.image(str(LOGO_FILE), width=120)
 st.sidebar.markdown("---")
@@ -90,6 +89,7 @@ import users, pacientes, agendamentos, prontuario, financeiro, comunicacao, rela
 from laudo_templates import LAUDOS
 
 # ---- Páginas ----
+
 def page_dashboard():
     st.title("Dashboard")
     try:
@@ -105,31 +105,58 @@ def page_pacientes():
     st.title("Pacientes")
     with st.expander("Novo paciente"):
         with st.form("cadpac"):
-            nome = st.text_input("Nome completo")
-            data_str = st.text_input("Data de nascimento (DD/MM/AAAA)")
-            data_nasc = None
-            idade = None
+            nome           = st.text_input("Nome completo")
+            data_str       = st.text_input("Data de nascimento (DD/MM/AAAA)")
+            data_nasc = None; idade = None
             if data_str:
                 try:
                     data_nasc = datetime.datetime.strptime(data_str, "%d/%m/%Y").date()
-                    hoje = datetime.date.today()
-                    idade = hoje.year - data_nasc.year - ((hoje.month, hoje.day) < (data_nasc.month, data_nasc.day))
+                    hoje      = datetime.date.today()
+                    idade     = hoje.year - data_nasc.year - (
+                        (hoje.month, hoje.day) < (data_nasc.month, data_nasc.day)
+                    )
                     st.write(f"Idade: {idade} anos")
                 except ValueError:
                     st.error("Formato inválido! Use DD/MM/AAAA")
-            email = st.text_input("Email")
-            plano = st.text_input("Plano de Saúde")
+            cpf            = st.text_input("CPF")
+            rg             = st.text_input("RG")
+            email          = st.text_input("Email")
+            tel            = st.text_input("Telefone principal")
+            tel2           = st.text_input("Telefone secundário")
+            endereco       = st.text_input("Endereço (Rua)")
+            numero         = st.text_input("Número")
+            complemento    = st.text_input("Complemento")
+            bairro         = st.text_input("Bairro")
+            cep            = st.text_input("CEP")
+            cidade         = st.text_input("Cidade")
+            estado         = st.text_input("Estado (UF)")
+            plano          = st.text_input("Plano de Saúde")
+            historico      = st.text_area("Histórico Médico")
+            observacoes    = st.text_area("Observações Gerais")
             ok = st.form_submit_button("Salvar")
         if ok:
             if not nome or not data_nasc:
-                st.error("Preencha nome e data corretamente.")
+                st.error("Nome e data de nascimento são obrigatórios.")
             else:
                 new_id = pacientes.adicionar_paciente(
                     nome,
                     data_nasc.isoformat(),
                     idade,
+                    cpf,
+                    rg,
                     email,
-                    plano
+                    tel,
+                    tel2,
+                    endereco,
+                    numero,
+                    complemento,
+                    bairro,
+                    cep,
+                    cidade,
+                    estado,
+                    plano,
+                    historico,
+                    observacoes
                 )
                 if new_id:
                     st.success(f"Paciente cadastrado! (ID {new_id})")
@@ -149,9 +176,9 @@ def page_agendamentos(admin=True, pid=None):
             with st.form("formag"):
                 data_c = st.date_input("Data")
                 hora_c = st.time_input("Hora")
-                tipo = st.selectbox("Tipo", ["Plano de Saúde", "Particular"])
-                obs = st.text_input("Observação")
-                ok = st.form_submit_button("Agendar")
+                tipo   = st.selectbox("Tipo", ["Plano de Saúde", "Particular"])
+                obs    = st.text_input("Observação")
+                ok     = st.form_submit_button("Agendar")
             if ok:
                 agendamentos.adicionar_agendamento(
                     pid,
@@ -175,7 +202,7 @@ def page_prontuarios(pid):
         with st.expander("Novo registro"):
             with st.form("formpr"):
                 desc = st.text_area("Descrição")
-                ok = st.form_submit_button("Salvar")
+                ok   = st.form_submit_button("Salvar")
             if ok:
                 prontuario.adicionar_prontuario(pid, desc, datetime.date.today().isoformat())
                 st.success("Registro salvo!")
@@ -193,9 +220,9 @@ def page_financeiro(admin=True, pid=None):
         with st.expander("Nova transação"):
             with st.form("formfin"):
                 data_m = st.date_input("Data")
-                val = st.number_input("Valor", 0.0)
-                desc = st.text_input("Descrição")
-                ok = st.form_submit_button("Registrar")
+                val    = st.number_input("Valor", 0.0)
+                desc   = st.text_input("Descrição")
+                ok     = st.form_submit_button("Registrar")
             if ok:
                 financeiro.adicionar_transacao(pid, data_m.isoformat(), val, desc)
                 st.success("Transação registrada!")
@@ -223,13 +250,13 @@ def page_laudos():
     st.title("Laudos")
     try:
         opts = {f"{p['id']} - {p['nome']}": p for p in pacientes.obter_pacientes()}
-        pac = opts[st.selectbox("Paciente", list(opts))]
+        pac  = opts[st.selectbox("Paciente", list(opts))]
         modelo = st.selectbox("Modelo de Laudo", list(LAUDOS.keys()))
-        texto = LAUDOS[modelo].format(
+        texto  = LAUDOS[modelo].format(
             nome=pac['nome'],
             data=datetime.date.today().strftime("%d/%m/%Y")
         )
-        texto = st.text_area("Conteúdo", texto, height=300)
+        texto  = st.text_area("Conteúdo", texto, height=300)
         if st.button("Gerar PDF"):
             buf, fname = gerar_pdf_laudo(texto, pac['nome'])
             st.download_button("Download PDF", buf, file_name=fname, mime="application/pdf")
