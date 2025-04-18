@@ -1,39 +1,27 @@
-# pacientes.py — Atualizado com login e senha_hash
-# ------------------------------------------------
 import os, streamlit as st
 from datetime import datetime
 from typing import List, Dict, Optional
 from supabase import create_client, Client
 
-URL = os.getenv("SUPABASE_URL") or st.secrets["SUPABASE_URL"]
-KEY = os.getenv("SUPABASE_KEY") or st.secrets["SUPABASE_KEY"]
-supabase: Client = create_client(URL, KEY)
+SUPABASE_URL = os.getenv("SUPABASE_URL") or st.secrets.get("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY") or st.secrets.get("SUPABASE_KEY")
+if not SUPABASE_URL or not SUPABASE_KEY:
+    raise RuntimeError("Defina SUPABASE_URL e SUPABASE_KEY em env ou Secrets.")
+
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 TBL = "pacientes"
 
 def _tbl():
     return supabase.table(TBL)
 
 def adicionar_paciente(
-    nome: str,
-    data_nasc: str,
-    idade: int,
-    cpf: str,
-    rg: str,
-    email: str,
-    tel: str,
-    tel2: str,
-    endereco: str,
-    numero: str,
-    comp: str,
-    bairro: str,
-    cep: str,
-    cidade: str,
-    estado: str,
-    plano: str,
-    historico: str,
-    obs: str,
-    login: str = "",
-    senha_hash: str = "",
+    nome: str, data_nasc: str, idade: int,
+    cpf: str, rg: str,
+    email: str, tel: str, tel2: str,
+    endereco: str, numero: str, comp: str,
+    bairro: str, cep: str, cidade: str, estado: str,
+    plano: str, historico: str, obs: str,
+    login: str = "", senha_hash: str = ""
 ) -> int:
     dados = {
         "nome": nome,
