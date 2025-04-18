@@ -8,3 +8,4 @@ python-docx>=0.8.11
 odfpy>=1.4.1
 reportlab>=3.6.0
 supabase>=0.0.1
+streamlit-authenticator==0.3.1
