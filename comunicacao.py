@@ -1,15 +1,18 @@
-# comunicacao.py
-from banco_dados import supabase
+import os, streamlit as st
+from datetime import datetime
+from supabase import create_client, Client
 
-def adicionar_comunicacao(paciente_id, mensagem, data):
-    dados = {
-        "paciente_id": paciente_id,
+SUPABASE_URL = os.getenv("SUPABASE_URL") or st.secrets.get("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY") or st.secrets.get("SUPABASE_KEY")
+if not SUPABASE_URL or not SUPABASE_KEY:
+    raise RuntimeError("Defina SUPABASE_URL e SUPABASE_KEY em env ou Secrets.")
+
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+TBL = "mensagens"
+
+def adicionar_comunicacao(pid: int, mensagem: str, timestamp: str):
+    supabase.table(TBL).insert({
+        "paciente_id": pid,
         "mensagem": mensagem,
-        "data": data
-    }
-    resposta = supabase.table("comunicacoes").insert(dados).execute()
-    return resposta
-
-def obter_comunicacoes():
-    resposta = supabase.table("comunicacoes").select("*").execute()
-    return resposta.data
+        "enviado_em": timestamp
+    }).execute()
