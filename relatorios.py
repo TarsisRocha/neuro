@@ -1,24 +1,22 @@
-# relatorios.py
-from pacientes import obter_pacientes
-from agendamentos import obter_agendamentos
-from financeiro import obter_transacoes
+import os, streamlit as st
+from typing import Dict
+from supabase import create_client, Client
 
-def gerar_relatorio():
-    pacientes = obter_pacientes()
-    agendamentos = obter_agendamentos()
-    transacoes = obter_transacoes()
-    
-    total_pacientes = len(pacientes) if pacientes else 0
-    total_agendamentos = len(agendamentos) if agendamentos else 0
-    total_financeiro = sum(t["valor"] for t in transacoes) if transacoes else 0
-    
-    return total_pacientes, total_agendamentos, total_financeiro
+SUPABASE_URL = os.getenv("SUPABASE_URL") or st.secrets.get("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY") or st.secrets.get("SUPABASE_KEY")
+if not SUPABASE_URL or not SUPABASE_KEY:
+    raise RuntimeError("Defina SUPABASE_URL e SUPABASE_KEY em env ou Secrets.")
 
-def relatorio_por_tipo_agendamento():
-    agendamentos = obter_agendamentos()
-    relatorio = {}
-    for ag in agendamentos:
-        tipo = ag.get("tipo_consulta", "Não informado")
-        if tipo:
-            relatorio[tipo] = relatorio.get(tipo, 0) + 1
-    return relatorio
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+def gerar_relatorio() -> (int,int,float):
+    tot_p = supabase.rpc("count_rows", {"table_name":"pacientes"}).execute().data or 0
+    tot_a = supabase.rpc("count_rows", {"table_name":"agendamentos"}).execute().data or 0
+    tot_f = supabase.rpc("sum_valor_transacoes").execute().data or 0
+    return tot_p, tot_a, tot_f
+
+def relatorio_por_tipo_agendamento() -> Dict[str,int]:
+    res = supabase.table("agendamentos")\
+                  .select("tipo_consulta, count:tipo_consulta")\
+                  .group("tipo_consulta").execute()
+    return {r["tipo_consulta"]: r["count"] for r in res.data}
