@@ -1,4 +1,4 @@
-# auth.py – Módulo de autenticação
+# auth.py – Módulo de autenticação com fallback para usuário padrão nos secrets
 
 import streamlit as st
 from banco_dados import supabase
@@ -16,10 +16,9 @@ def verify_password(password: str, hashed: str) -> bool:
 def login() -> dict:
     """
     Exibe formulário de login e retorna dict com:
-    - user: login
-    - name: nome completo (se disponível)
-    - role: 'admin' ou 'paciente'
-    - pid: id do paciente (se role for 'paciente')
+      user, name, role, pid (se for paciente).
+    Primeiro tenta usuário padrão definido em st.secrets;
+    caso contrário, consulta a tabela 'usuarios' no Supabase.
     """
     st.title("Login")
     user_input = st.text_input("Usuário")
@@ -27,7 +26,19 @@ def login() -> dict:
     if not st.button("Entrar"):
         st.stop()
 
-    # Busca usuário no Supabase
+    # 1) Verifica se é o admin padrão do secrets
+    admin_login = st.secrets.get("admin_login")
+    admin_pwd   = st.secrets.get("admin_password")
+    if admin_login and admin_pwd and user_input == admin_login:
+        if pwd == admin_pwd:
+            sessão = {"user": admin_login, "name": "Administrador", "role": "admin", "pid": None}
+            st.session_state["auth"] = sessão
+            return sessão
+        else:
+            st.error("Senha do admin padrão inválida.")
+            st.stop()
+
+    # 2) Busca usuário no Supabase
     resp = (
         supabase
         .table("usuarios")
@@ -49,7 +60,7 @@ def login() -> dict:
         "user": user["login"],
         "name": user.get("nome", user["login"]),
         "role": user["role"],
-        "pid": user.get("paciente_id")
+        "pid":  user.get("paciente_id")
     }
     st.session_state["auth"] = sessão
     return sessão
