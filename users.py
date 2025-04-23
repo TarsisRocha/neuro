@@ -2,7 +2,7 @@
 
 import bcrypt
 from typing import List, Dict
-from banco_dados import supabase
+from database import supabase
 
 def criar_usuario(
     login: str,
