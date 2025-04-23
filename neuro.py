@@ -172,7 +172,7 @@ def page_pacientes():
                 except ValueError:
                     st.error("Formato inválido! Use DD/MM/AAAA")
             cpf         = st.text_input("CPF", value=pre['cpf'] if pre else "")
-            rg          = st.text_input("RG", value=pre['rg'] if pre else "")
+            rg = st.text_input("RG", value=pre.get('rg', '') if pre else "")
             email       = st.text_input("Email", value=pre['email'] if pre else "")
             tel         = st.text_input("Telefone principal", value=pre['tel'] if pre else "")
             tel2        = st.text_input("Telefone secundário", value=pre['tel2'] if pre else "")
