@@ -37,7 +37,7 @@ def obter_pacientes() -> List[Dict]:
             "estado": p.get("estado", ""),
             "plano": p.get("plano", ""),
             "historico": p.get("historico", ""),
-            "observacoes": p.get("observacoes", ""),
+            "observacao": p.get("observacao", ""),  # agora singular
             "data_nasc": data_fmt,
             "idade": p.get("idade", None)
         })
@@ -61,7 +61,7 @@ def adicionar_paciente(
     estado: str,
     plano: str,
     historico: str,
-    observacoes: str
+    observacao: str
 ) -> int:
     """
     Insere novo paciente no banco e retorna o novo ID (ou None se falhar).
@@ -94,7 +94,7 @@ def adicionar_paciente(
         "estado": estado,
         "plano": plano,
         "historico": historico,
-        "observacoes": observacoes
+        "observacao": observacao  # agora singular
     }
     if iso_date:
         registro["data_nasc"] = iso_date
@@ -160,7 +160,7 @@ def obter_paciente_por_login(login: str) -> Dict:
         "estado": p.get("estado", ""),
         "plano": p.get("plano", ""),
         "historico": p.get("historico", ""),
-        "observacoes": p.get("observacoes", ""),
+        "observacao": p.get("observacao", ""),  # agora singular
         "data_nasc": data_fmt,
         "idade": p.get("idade", None)
     }
