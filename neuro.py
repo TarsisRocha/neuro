@@ -36,11 +36,11 @@ st.set_page_config(
 )
 
 # ---- Autenticação ----
-auth_data    = auth.login()
-user_key     = auth_data["user"]
-user_name    = auth_data["name"]
-role         = auth_data["role"]       # 'admin' ou 'paciente'
-paciente_id  = auth_data.get("pid")
+auth_data   = auth.login()
+user_key    = auth_data["user"]
+user_name   = auth_data["name"]
+role        = auth_data["role"]       # 'admin' ou 'paciente'
+paciente_id = auth_data.get("pid")
 
 # ---- Sidebar ----
 st.sidebar.success(f"Logado como {user_name} ({role})")
@@ -84,8 +84,10 @@ def gerar_pdf_laudo(texto: str, nome_pac: str):
 
     if LOGO_FILE.exists():
         try:
-            pdf.drawImage(ImageReader(str(LOGO_FILE)),
-                          (w-150)/2, h-70, 150, 50, mask="auto")
+            pdf.drawImage(
+                ImageReader(str(LOGO_FILE)),
+                (w-150)/2, h-70, 150, 50, mask="auto"
+            )
         except:
             pass
 
@@ -111,32 +113,25 @@ def gerar_pdf_laudo(texto: str, nome_pac: str):
 def page_dashboard():
     st.title("Dashboard")
     try:
-        # métricas gerais
         tot_p, tot_a, tot_f = relatorios.gerar_relatorio()
         c1, c2, c3 = st.columns(3)
         c1.metric("Pacientes", tot_p)
         c2.metric("Consultas", tot_a)
         c3.metric("Receita", f"R$ {tot_f:.2f}")
 
-        # consultas agendadas para hoje, ordenadas por hora (ordem de chegada)
         st.subheader("Consultas de hoje")
         hoje = datetime.date.today().isoformat()
         todas = agendamentos.obter_agendamentos()
         de_hoje = [a for a in todas if a.get("data") == hoje]
         de_hoje.sort(key=lambda x: x.get("hora") or "")
 
-        # monta mapeamento id→nome
         nomes = {p["id"]: p["nome"] for p in pacientes.obter_pacientes()}
-
-        # DataFrame com Hora, Paciente, Observação
-        registros = []
-        for a in de_hoje:
-            registros.append({
-                "Hora":       a.get("hora"),
-                "Paciente":   nomes.get(a.get("paciente_id"), ""),
-                "Observação": a.get("observacao", "")
-            })
-        df = pd.DataFrame(registros, columns=["Hora", "Paciente", "Observação"])
+        registros = [{
+            "Hora":       a.get("hora"),
+            "Paciente":   nomes.get(a.get("paciente_id"), ""),
+            "Observação": a.get("observacao", "")
+        } for a in de_hoje]
+        df = pd.DataFrame(registros, columns=["Hora","Paciente","Observação"])
 
         if df.empty:
             st.info("Nenhuma consulta agendada para hoje.")
@@ -148,9 +143,17 @@ def page_dashboard():
 def page_pacientes():
     st.title("Pacientes")
     lista = pacientes.obter_pacientes()
-    opts  = {f"{p['cpf']} ‒ {p['nome']}": p for p in lista if p.get('cpf')}
-    sel   = st.selectbox("Buscar existente (CPF ‒ Nome)", [""] + list(opts.keys()))
-    pre   = opts.get(sel)
+    busca = st.text_input("Buscar paciente por nome")
+    if busca:
+        filtrados = [p for p in lista if busca.lower() in p['nome'].lower()]
+    else:
+        filtrados = lista
+
+    pre = None
+    if filtrados:
+        opts = {f"{p['nome']} (ID {p['id']})": p for p in filtrados}
+        sel = st.selectbox("Paciente existente", list(opts.keys()))
+        pre = opts.get(sel)
 
     with st.expander("Novo paciente"):
         with st.form("cadpac"):
@@ -256,8 +259,7 @@ def page_prontuarios(pid=None):
                     dados = f.read()
                 st.download_button(
                     arq.name, dados,
-                    file_name=arq.name,
-                    mime="application/octet-stream"
+                    file_name=arq.name, mime="application/octet-stream"
                 )
         else:
             st.info("Nenhum exame anexado.")
@@ -332,7 +334,7 @@ def page_usuarios():
             lg            = st.text_input("Login")
             sel           = st.selectbox("Paciente", list(opts.keys()))
             nome_completo = opts[sel]["nome"]
-            paciente_id   = opts[sel]["id"]
+            pid_sel       = opts[sel]["id"]
             pw            = st.text_input("Senha", type="password")
             rl            = st.selectbox("Perfil", ["paciente", "admin"])
             ok            = st.form_submit_button("Criar")
@@ -342,7 +344,7 @@ def page_usuarios():
                 nome=nome_completo,
                 senha=pw,
                 role=rl,
-                paciente_id=paciente_id
+                paciente_id=pid_sel
             )
             if sucesso:
                 st.success("Usuário criado!")
@@ -358,8 +360,11 @@ def page_minhas_consultas(pid):
         raw = agendamentos.obter_agendamentos_por_paciente(pid)
         df  = pd.DataFrame(raw)
         if not df.empty:
-            campos = [c for c in ("data", "hora", "observacao") if c in df.columns]
-            df = df[campos]
+            cols = []
+            if "data" in df.columns:       cols.append("data")
+            if "hora" in df.columns:       cols.append("hora")
+            if "observacao" in df.columns: cols.append("observacao")
+            df = df[cols]
             df.columns = ["Data", "Hora", "Observações"]
         aggrid_table(df)
     except Exception as e:
