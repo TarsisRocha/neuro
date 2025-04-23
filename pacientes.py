@@ -12,7 +12,7 @@ def obter_pacientes() -> List[Dict]:
     data = resp.data or []
     pacientes = []
     for p in data:
-        raw = p.get("data_nascimento")
+        raw = p.get("data_nasc")
         data_fmt = ""
         if raw:
             try:
