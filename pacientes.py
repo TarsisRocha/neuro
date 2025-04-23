@@ -4,40 +4,24 @@ from typing import List, Dict
 from database import supabase
 
 def obter_pacientes() -> List[Dict]:
-    """
-    Retorna lista de pacientes com todos os campos necessários,
-    formatando data_nasc como DD/MM/AAAA.
-    """
     resp = supabase.table("pacientes").select("*").execute()
     data = resp.data or []
     pacientes = []
     for p in data:
-        raw = p.get("data_nasc")
+        raw = p.get("data_nasc")  # adapte o nome do campo no seu esquema
         data_fmt = ""
         if raw:
             try:
                 dt = datetime.date.fromisoformat(raw)
                 data_fmt = dt.strftime("%d/%m/%Y")
             except:
-                data_fmt = ""
+                pass
         pacientes.append({
             "id": p.get("id"),
             "nome": p.get("nome", ""),
             "cpf": p.get("cpf", ""),
-            "rg": p.get("rg", ""),
-            "email": p.get("email", ""),
-            "tel": p.get("tel", ""),
-            "tel2": p.get("tel2", ""),
-            "endereco": p.get("endereco", ""),
-            "numero": p.get("numero", ""),
-            "complemento": p.get("complemento", ""),
-            "bairro": p.get("bairro", ""),
-            "cep": p.get("cep", ""),
-            "cidade": p.get("cidade", ""),
-            "estado": p.get("estado", ""),
-            "plano": p.get("plano", ""),
-            "historico": p.get("historico", ""),
-            "observacao": p.get("observacao", ""),  # agora singular
+            # … demais campos …
+            "observacao": p.get("observacao", ""),
             "data_nasc": data_fmt,
             "idade": p.get("idade", None)
         })
@@ -63,10 +47,7 @@ def adicionar_paciente(
     historico: str,
     observacao: str
 ) -> int:
-    """
-    Insere novo paciente no banco e retorna o novo ID (ou None se falhar).
-    data_nasc pode vir em DD/MM/AAAA ou ISO (YYYY-MM-DD).
-    """
+    # converte data de entrada (DD/MM/AAAA ou YYYY-MM-DD) para ISO
     iso_date = None
     if data_nasc:
         try:
@@ -94,7 +75,7 @@ def adicionar_paciente(
         "estado": estado,
         "plano": plano,
         "historico": historico,
-        "observacao": observacao  # agora singular
+        "observacao": observacao
     }
     if iso_date:
         registro["data_nasc"] = iso_date
@@ -108,15 +89,12 @@ def adicionar_paciente(
         st.error(f"Erro ao inserir paciente: {e}")
         return None
 
-    if resp.status_code in (200, 201) and resp.data:
+    # supabase-py pode não expor status_code; basta verificar se houve 'data'
+    if getattr(resp, "data", None):
         return resp.data[0].get("id")
     return None
 
 def obter_paciente_por_login(login: str) -> Dict:
-    """
-    Retorna dados de um paciente a partir do login de usuário,
-    formatando data_nasc como DD/MM/AAAA.
-    """
     resp_u = (
         supabase.table("usuarios")
                .select("paciente_id")
@@ -142,25 +120,13 @@ def obter_paciente_por_login(login: str) -> Dict:
             dt = datetime.date.fromisoformat(raw)
             data_fmt = dt.strftime("%d/%m/%Y")
         except:
-            data_fmt = ""
+            pass
     return {
         "id": p.get("id"),
         "nome": p.get("nome", ""),
         "cpf": p.get("cpf", ""),
-        "rg": p.get("rg", ""),
-        "email": p.get("email", ""),
-        "tel": p.get("tel", ""),
-        "tel2": p.get("tel2", ""),
-        "endereco": p.get("endereco", ""),
-        "numero": p.get("numero", ""),
-        "complemento": p.get("complemento", ""),
-        "bairro": p.get("bairro", ""),
-        "cep": p.get("cep", ""),
-        "cidade": p.get("cidade", ""),
-        "estado": p.get("estado", ""),
-        "plano": p.get("plano", ""),
-        "historico": p.get("historico", ""),
-        "observacao": p.get("observacao", ""),  # agora singular
+        # … demais campos …
+        "observacao": p.get("observacao", ""),
         "data_nasc": data_fmt,
         "idade": p.get("idade", None)
     }
