@@ -1,4 +1,4 @@
-# auth.py – Autenticação com admin via secrets e Supabase
+# auth.py – Módulo de autenticação com persistência de sessão
 
 import streamlit as st
 from database import supabase
@@ -8,6 +8,14 @@ def verify_password(pwd: str, hashed: str) -> bool:
     return bcrypt.checkpw(pwd.encode("utf-8"), hashed.encode("utf-8"))
 
 def login() -> dict:
+    """
+    Se já existir st.session_state['auth'], retorna direto.
+    Caso contrário, exibe formulário (admin via secrets ou Supabase).
+    """
+    # Se já logado, retorna os dados
+    if "auth" in st.session_state:
+        return st.session_state["auth"]
+
     st.title("Login")
     user_input = st.text_input("Usuário")
     pwd        = st.text_input("Senha", type="password")
@@ -20,13 +28,8 @@ def login() -> dict:
     admin_hash     = st.secrets.get("admin_hash")
 
     if admin_login and user_input == admin_login:
-        # se tiver senha em texto
-        if admin_password and pwd == admin_password:
-            sess = {"user": admin_login, "name": "Administrador", "role": "admin", "pid": None}
-            st.session_state["auth"] = sess
-            return sess
-        # se tiver só hash
-        if admin_hash and verify_password(pwd, admin_hash):
+        if (admin_password and pwd == admin_password) or \
+           (admin_hash and verify_password(pwd, admin_hash)):
             sess = {"user": admin_login, "name": "Administrador", "role": "admin", "pid": None}
             st.session_state["auth"] = sess
             return sess
@@ -35,17 +38,18 @@ def login() -> dict:
 
     # 2) Usuário no Supabase
     resp = (
-        supabase.table("usuarios")
-                 .select("login, senha_hash, role, paciente_id, nome")
-                 .eq("login", user_input)
-                 .execute()
+        supabase
+        .table("usuarios")
+        .select("login, senha_hash, role, paciente_id, nome")
+        .eq("login", user_input)
+        .execute()
     )
-    reg = resp.data or []
-    if len(reg) != 1:
+    regs = resp.data or []
+    if len(regs) != 1:
         st.error("Usuário não encontrado.")
         st.stop()
 
-    user = reg[0]
+    user = regs[0]
     if not verify_password(pwd, user["senha_hash"]):
         st.error("Senha inválida.")
         st.stop()
