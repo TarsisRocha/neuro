@@ -1,7 +1,7 @@
 # pacientes.py – Módulo de gerenciamento de pacientes
 import datetime
 from typing import List, Dict
-from banco_dados import supabase
+from database import supabase
 
 def obter_pacientes() -> List[Dict]:
     """
