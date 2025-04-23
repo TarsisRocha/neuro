@@ -1,5 +1,5 @@
 import streamlit as st
-from database import supabase
+from banco_dados import supabase
 import bcrypt
 import datetime
 
