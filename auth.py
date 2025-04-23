@@ -1,7 +1,7 @@
 # auth.py – Autenticação com admin via secrets e Supabase
 
 import streamlit as st
-from banco_dados import supabase
+from database import supabase
 import bcrypt
 
 def verify_password(pwd: str, hashed: str) -> bool:
