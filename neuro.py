@@ -1,7 +1,7 @@
 # neuro.py – App principal para Clínica de Neuropediatria
 
 import streamlit as st
-import datetime, os, textwrap
+import datetime, textwrap
 from pathlib import Path
 from io import BytesIO
 
@@ -54,24 +54,18 @@ def aggrid_table(df: pd.DataFrame):
     gb = GridOptionsBuilder.from_dataframe(df)
     gb.configure_pagination(paginationAutoPageSize=True)
     gb.configure_default_column(
-        filter=True,
-        sortable=True,
-        resizable=True,
-        wrapText=True,
-        autoHeight=True,
-        minColumnWidth=150,
-        flex=1
+        filter=True, sortable=True, resizable=True,
+        wrapText=True, autoHeight=True,
+        minColumnWidth=150, flex=1
     )
     opts = gb.build()
     opts['domLayout'] = 'normal'
     AgGrid(
-        df,
-        gridOptions=opts,
+        df, gridOptions=opts,
         update_mode="MODEL_CHANGED",
         fit_columns_on_grid_load=False,
         enable_enterprise_modules=False,
-        theme="streamlit",
-        height=400
+        theme="streamlit", height=400
     )
 
 # ---- Geração de PDF de laudo ----
@@ -84,10 +78,8 @@ def gerar_pdf_laudo(texto: str, nome_pac: str):
 
     if LOGO_FILE.exists():
         try:
-            pdf.drawImage(
-                ImageReader(str(LOGO_FILE)),
-                (w-150)/2, h-70, 150, 50, mask="auto"
-            )
+            pdf.drawImage(ImageReader(str(LOGO_FILE)),
+                          (w-150)/2, h-70, 150, 50, mask="auto")
         except:
             pass
 
@@ -113,6 +105,7 @@ import users, pacientes, agendamentos, prontuario, financeiro, comunicacao, rela
 from laudo_templates import LAUDOS
 
 # ---- Páginas ----
+
 def page_dashboard():
     st.title("Dashboard")
     try:
@@ -126,7 +119,6 @@ def page_dashboard():
 
 def page_pacientes():
     st.title("Pacientes")
-    # autocomplete por CPF
     lista = pacientes.obter_pacientes()
     opts  = {f"{p['cpf']} - {p['nome']}": p for p in lista if p.get('cpf')}
     sel   = st.selectbox("Buscar existente (CPF - Nome)", [""] + list(opts.keys()))
@@ -134,11 +126,11 @@ def page_pacientes():
 
     with st.expander("Novo paciente"):
         with st.form("cadpac"):
-            nome        = st.text_input("Nome completo",       value=pre['nome'] if pre else "")
+            nome        = st.text_input("Nome completo", value=pre['nome'] if pre else "")
             data_def    = ""
             if pre and pre.get('data_nascimento'):
                 try:
-                    dt = datetime.datetime.fromisoformat(pre['data_nascimento']).date()
+                    dt = datetime.date.fromisoformat(pre['data_nascimento'])
                     data_def = dt.strftime("%d/%m/%Y")
                 except: pass
             data_str    = st.text_input("Data de nascimento (DD/MM/AAAA)", value=data_def)
@@ -151,21 +143,21 @@ def page_pacientes():
                     st.write(f"Idade: {idade} anos")
                 except ValueError:
                     st.error("Formato inválido! Use DD/MM/AAAA")
-            cpf         = st.text_input("CPF",                   value=pre['cpf'] if pre else "")
-            rg          = st.text_input("RG",                    value=pre['rg'] if pre else "")
-            email       = st.text_input("Email",                 value=pre['email'] if pre else "")
-            tel         = st.text_input("Telefone principal",    value=pre['tel'] if pre else "")
-            tel2        = st.text_input("Telefone secundário",   value=pre['tel2'] if pre else "")
-            endereco    = st.text_input("Endereço (Rua)",        value=pre['endereco'] if pre else "")
-            numero      = st.text_input("Número",                value=pre['numero'] if pre else "")
-            complemento = st.text_input("Complemento",           value=pre['complemento'] if pre else "")
-            bairro      = st.text_input("Bairro",                value=pre['bairro'] if pre else "")
-            cep         = st.text_input("CEP",                   value=pre['cep'] if pre else "")
-            cidade      = st.text_input("Cidade",                value=pre['cidade'] if pre else "")
-            estado      = st.text_input("Estado (UF)",           value=pre['estado'] if pre else "")
-            plano       = st.text_input("Plano de Saúde",        value=pre['plano'] if pre else "")
-            historico   = st.text_area("Histórico Médico",      value=pre['historico'] if pre else "")
-            observacoes = st.text_area("Observações Gerais",    value=pre['observacoes'] if pre else "")
+            cpf         = st.text_input("CPF", value=pre['cpf'] if pre else "")
+            rg          = st.text_input("RG", value=pre['rg'] if pre else "")
+            email       = st.text_input("Email", value=pre['email'] if pre else "")
+            tel         = st.text_input("Telefone principal", value=pre['tel'] if pre else "")
+            tel2        = st.text_input("Telefone secundário", value=pre['tel2'] if pre else "")
+            endereco    = st.text_input("Endereço (Rua)", value=pre['endereco'] if pre else "")
+            numero      = st.text_input("Número", value=pre['numero'] if pre else "")
+            complemento = st.text_input("Complemento", value=pre['complemento'] if pre else "")
+            bairro      = st.text_input("Bairro", value=pre['bairro'] if pre else "")
+            cep         = st.text_input("CEP", value=pre['cep'] if pre else "")
+            cidade      = st.text_input("Cidade", value=pre['cidade'] if pre else "")
+            estado      = st.text_input("Estado (UF)", value=pre['estado'] if pre else "")
+            plano       = st.text_input("Plano de Saúde", value=pre['plano'] if pre else "")
+            historico   = st.text_area("Histórico Médico", value=pre['historico'] if pre else "")
+            observacoes = st.text_area("Observações Gerais", value=pre['observacoes'] if pre else "")
             ok          = st.form_submit_button("Salvar")
 
         if ok:
@@ -217,6 +209,7 @@ def page_agendamentos(admin=True, pid=None):
 def page_prontuarios(pid):
     st.title("Prontuário")
     try:
+        # novo registro
         with st.expander("Novo registro"):
             with st.form("formpr"):
                 desc = st.text_area("Descrição")
@@ -224,8 +217,22 @@ def page_prontuarios(pid):
             if ok:
                 prontuario.adicionar_prontuario(pid, desc, datetime.date.today().isoformat())
                 st.success("Registro salvo!")
+
+        # tabela de registros
         df = pd.DataFrame(prontuario.obter_prontuarios_por_paciente(pid))
         aggrid_table(df)
+
+        # exames anexados
+        st.subheader("Exames enviados")
+        arquivos = list(UPLOAD_DIR.glob(f"{pid}_*"))
+        if arquivos:
+            for arq in arquivos:
+                with open(arq, "rb") as f:
+                    dados = f.read()
+                st.download_button(arq.name, dados, file_name=arq.name,
+                                   mime="application/octet-stream")
+        else:
+            st.info("Nenhum exame anexado.")
     except Exception as e:
         st.error(f"Erro no prontuário: {e}")
 
@@ -267,30 +274,32 @@ def page_comunicacao():
 def page_laudos():
     st.title("Laudos")
     try:
-        opts  = {f"{p['id']} - {p['nome']}": p for p in pacientes.obter_pacientes()}
-        pac   = opts[st.selectbox("Paciente", list(opts))]
-        modelo= st.selectbox("Modelo de Laudo", list(LAUDOS.keys()))
-        texto = LAUDOS[modelo].format(nome=pac['nome'], data=datetime.date.today().strftime("%d/%m/%Y"))
-        texto = st.text_area("Conteúdo", texto, height=300)
+        opts   = {f"{p['id']} - {p['nome']}": p for p in pacientes.obter_pacientes()}
+        pac    = opts[st.selectbox("Paciente", list(opts))]
+        modelo = st.selectbox("Modelo de Laudo", list(LAUDOS.keys()))
+        texto  = LAUDOS[modelo].format(nome=pac['nome'],
+                                       data=datetime.date.today().strftime("%d/%m/%Y"))
+        texto  = st.text_area("Conteúdo", texto, height=300)
         if st.button("Gerar PDF"):
             buf, fname = gerar_pdf_laudo(texto, pac['nome'])
-            st.download_button("Download PDF", buf, file_name=fname, mime="application/pdf")
+            st.download_button("Download PDF", buf,
+                               file_name=fname, mime="application/pdf")
     except Exception as e:
         st.error(f"Erro na emissão de laudos: {e}")
 
 def page_usuarios():
     st.title("Gerenciar Usuários")
     try:
-        # vincula login ao paciente
         opts = {f"{p['id']} - {p['nome']}": p['id'] for p in pacientes.obter_pacientes()}
         with st.expander("Criar Novo Usuário"):
             with st.form("formusr"):
                 lg = st.text_input("Login")
                 sel= st.selectbox("Paciente", list(opts))
+                pw = st.text_input("Senha", type="password")
                 rl = st.selectbox("Perfil", ["paciente", "admin"])
                 ok = st.form_submit_button("Criar")
             if ok:
-                users.criar_usuario(lg, opts[sel], rl)
+                users.criar_usuario(lg, opts[sel], rl, pw)
                 st.success("Usuário criado!")
         df = pd.DataFrame(users.listar_usuarios())
         aggrid_table(df)
