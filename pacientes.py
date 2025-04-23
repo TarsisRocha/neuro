@@ -1,12 +1,12 @@
 # pacientes.py – Módulo de gerenciamento de pacientes
 import datetime
 from typing import List, Dict
-from database import supabase
+from banco_dados import supabase
 
 def obter_pacientes() -> List[Dict]:
     """
     Retorna lista de pacientes com todos os campos necessários,
-    formatando data_nascimento como DD/MM/AAAA.
+    formatando data_nasc como DD/MM/AAAA.
     """
     resp = supabase.table("pacientes").select("*").execute()
     data = resp.data or []
@@ -38,14 +38,14 @@ def obter_pacientes() -> List[Dict]:
             "plano": p.get("plano", ""),
             "historico": p.get("historico", ""),
             "observacoes": p.get("observacoes", ""),
-            "data_nascimento": data_fmt,
+            "data_nasc": data_fmt,
             "idade": p.get("idade", None)
         })
     return pacientes
 
 def adicionar_paciente(
     nome: str,
-    data_nascimento: str,
+    data_nasc: str,
     idade: int,
     cpf: str,
     rg: str,
@@ -65,16 +65,15 @@ def adicionar_paciente(
 ) -> int:
     """
     Insere novo paciente no banco e retorna o novo ID (ou None se falhar).
-    data_nascimento pode vir em DD/MM/AAAA ou ISO (YYYY-MM-DD).
+    data_nasc pode vir em DD/MM/AAAA ou ISO (YYYY-MM-DD).
     """
-    # converte entrada para ISO
     iso_date = None
-    if data_nascimento:
+    if data_nasc:
         try:
-            if "/" in data_nascimento:
-                dt = datetime.datetime.strptime(data_nascimento, "%d/%m/%Y").date()
+            if "/" in data_nasc:
+                dt = datetime.datetime.strptime(data_nasc, "%d/%m/%Y").date()
             else:
-                dt = datetime.date.fromisoformat(data_nascimento)
+                dt = datetime.date.fromisoformat(data_nasc)
             iso_date = dt.isoformat()
         except ValueError:
             iso_date = None
@@ -98,7 +97,7 @@ def adicionar_paciente(
         "observacoes": observacoes
     }
     if iso_date:
-        registro["data_nascimento"] = iso_date
+        registro["data_nasc"] = iso_date
     if isinstance(idade, int):
         registro["idade"] = idade
 
@@ -116,9 +115,8 @@ def adicionar_paciente(
 def obter_paciente_por_login(login: str) -> Dict:
     """
     Retorna dados de um paciente a partir do login de usuário,
-    formatando data_nascimento como DD/MM/AAAA.
+    formatando data_nasc como DD/MM/AAAA.
     """
-    # busca id do paciente
     resp_u = (
         supabase.table("usuarios")
                .select("paciente_id")
@@ -129,7 +127,6 @@ def obter_paciente_por_login(login: str) -> Dict:
     pid = resp_u.data.get("paciente_id") if resp_u.data else None
     if not pid:
         return {}
-    # busca dados do paciente
     resp_p = (
         supabase.table("pacientes")
                .select("*")
@@ -138,7 +135,7 @@ def obter_paciente_por_login(login: str) -> Dict:
                .execute()
     )
     p = resp_p.data or {}
-    raw = p.get("data_nascimento")
+    raw = p.get("data_nasc")
     data_fmt = ""
     if raw:
         try:
@@ -164,6 +161,6 @@ def obter_paciente_por_login(login: str) -> Dict:
         "plano": p.get("plano", ""),
         "historico": p.get("historico", ""),
         "observacoes": p.get("observacoes", ""),
-        "data_nascimento": data_fmt,
+        "data_nasc": data_fmt,
         "idade": p.get("idade", None)
     }
