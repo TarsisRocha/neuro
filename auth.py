@@ -1,7 +1,8 @@
+# auth.py – Módulo de autenticação
+
 import streamlit as st
 from banco_dados import supabase
 import bcrypt
-import datetime
 
 def hash_password(password: str) -> str:
     """Gera hash para a senha informada."""
@@ -14,34 +15,41 @@ def verify_password(password: str, hashed: str) -> bool:
 
 def login() -> dict:
     """
-    Exibe formulário de login e retorna dict com
-    user (login), name, role e pid (se paciente).
+    Exibe formulário de login e retorna dict com:
+    - user: login
+    - name: nome completo (se disponível)
+    - role: 'admin' ou 'paciente'
+    - pid: id do paciente (se role for 'paciente')
     """
     st.title("Login")
-    login = st.text_input("Usuário")
-    pwd   = st.text_input("Senha", type="password")
+    user_input = st.text_input("Usuário")
+    pwd        = st.text_input("Senha", type="password")
     if not st.button("Entrar"):
         st.stop()
 
-    # Busca registro do usuário
+    # Busca usuário no Supabase
     resp = (
         supabase
         .table("usuarios")
         .select("login, senha_hash, role, paciente_id, nome")
-        .eq("login", login)
-        .single()
+        .eq("login", user_input)
         .execute()
     )
-    user = resp.data
-    if not user or not verify_password(pwd, user["senha_hash"]):
-        st.error("Usuário ou senha inválidos.")
+    registros = resp.data or []
+    if len(registros) != 1:
+        st.error("Usuário não encontrado.")
         st.stop()
 
-    # Define sessão
-    st.session_state["auth"] = {
-        "user":      user["login"],
-        "name":      user.get("nome", user["login"]),
-        "role":      user["role"],
-        "pid":       user.get("paciente_id")
+    user = registros[0]
+    if not verify_password(pwd, user["senha_hash"]):
+        st.error("Senha inválida.")
+        st.stop()
+
+    sessão = {
+        "user": user["login"],
+        "name": user.get("nome", user["login"]),
+        "role": user["role"],
+        "pid": user.get("paciente_id")
     }
-    return st.session_state["auth"]
+    st.session_state["auth"] = sessão
+    return sessão
