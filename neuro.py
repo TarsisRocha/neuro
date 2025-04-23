@@ -76,18 +76,16 @@ def aggrid_table(df: pd.DataFrame):
 
 # ---- Geração de PDF de laudo ----
 def gerar_pdf_laudo(texto: str, nome_pac: str):
-    hoje    = datetime.date.today()
-    data_str= hoje.strftime("%d-%m-%Y")
-    buf     = BytesIO()
-    pdf     = pdfcanvas.Canvas(buf, pagesize=letter)
-    w, h    = letter
+    hoje     = datetime.date.today()
+    data_str = hoje.strftime("%d-%m-%Y")
+    buf      = BytesIO()
+    pdf      = pdfcanvas.Canvas(buf, pagesize=letter)
+    w, h     = letter
 
     if LOGO_FILE.exists():
         try:
-            pdf.drawImage(
-                ImageReader(str(LOGO_FILE)),
-                (w-150)/2, h-70, 150, 50, mask="auto"
-            )
+            pdf.drawImage(ImageReader(str(LOGO_FILE)),
+                          (w-150)/2, h-70, 150, 50, mask="auto")
         except:
             pass
 
@@ -113,11 +111,37 @@ def gerar_pdf_laudo(texto: str, nome_pac: str):
 def page_dashboard():
     st.title("Dashboard")
     try:
+        # métricas gerais
         tot_p, tot_a, tot_f = relatorios.gerar_relatorio()
         c1, c2, c3 = st.columns(3)
         c1.metric("Pacientes", tot_p)
         c2.metric("Consultas", tot_a)
         c3.metric("Receita", f"R$ {tot_f:.2f}")
+
+        # consultas agendadas para hoje, ordenadas por hora (ordem de chegada)
+        st.subheader("Consultas de hoje")
+        hoje = datetime.date.today().isoformat()
+        todas = agendamentos.obter_agendamentos()
+        de_hoje = [a for a in todas if a.get("data") == hoje]
+        de_hoje.sort(key=lambda x: x.get("hora") or "")
+
+        # monta mapeamento id→nome
+        nomes = {p["id"]: p["nome"] for p in pacientes.obter_pacientes()}
+
+        # DataFrame com Hora, Paciente, Observação
+        registros = []
+        for a in de_hoje:
+            registros.append({
+                "Hora":       a.get("hora"),
+                "Paciente":   nomes.get(a.get("paciente_id"), ""),
+                "Observação": a.get("observacao", "")
+            })
+        df = pd.DataFrame(registros, columns=["Hora", "Paciente", "Observação"])
+
+        if df.empty:
+            st.info("Nenhuma consulta agendada para hoje.")
+        else:
+            aggrid_table(df)
     except Exception as e:
         st.error(f"Erro ao carregar dashboard: {e}")
 
@@ -130,36 +154,36 @@ def page_pacientes():
 
     with st.expander("Novo paciente"):
         with st.form("cadpac"):
-            nome         = st.text_input("Nome completo", value=pre['nome'] if pre else "")
-            data_def     = pre.get('data_nasc','') if pre else ""
-            data_str     = st.text_input("Data de nascimento (DD/MM/AAAA)", value=data_def)
+            nome        = st.text_input("Nome completo", value=pre['nome'] if pre else "")
+            data_def    = pre.get('data_nasc','') if pre else ""
+            data_str    = st.text_input("Data de nascimento (DD/MM/AAAA)", value=data_def)
             data_nasc, idade = None, None
             if data_str:
                 try:
                     data_nasc = datetime.datetime.strptime(data_str, "%d/%m/%Y").date()
                     hoje      = datetime.date.today()
                     idade     = hoje.year - data_nasc.year - (
-                        (hoje.month, hoje.day) < (data_nasc.month, data_nasc.day)
-                    )
+                                  (hoje.month, hoje.day) < (data_nasc.month, data_nasc.day)
+                              )
                     st.write(f"Idade: {idade} anos")
                 except ValueError:
                     st.error("Formato inválido! Use DD/MM/AAAA")
-            cpf          = st.text_input("CPF", value=pre['cpf'] if pre else "")
-            rg           = st.text_input("RG", value=pre['rg'] if pre else "")
-            email        = st.text_input("Email", value=pre['email'] if pre else "")
-            tel          = st.text_input("Telefone principal", value=pre['tel'] if pre else "")
-            tel2         = st.text_input("Telefone secundário", value=pre['tel2'] if pre else "")
-            endereco     = st.text_input("Endereço (Rua)", value=pre['endereco'] if pre else "")
-            numero       = st.text_input("Número", value=pre['numero'] if pre else "")
-            complemento  = st.text_input("Complemento", value=pre['complemento'] if pre else "")
-            bairro       = st.text_input("Bairro", value=pre['bairro'] if pre else "")
-            cep          = st.text_input("CEP", value=pre['cep'] if pre else "")
-            cidade       = st.text_input("Cidade", value=pre['cidade'] if pre else "")
-            estado       = st.text_input("Estado (UF)", value=pre['estado'] if pre else "")
-            plano        = st.text_input("Plano de Saúde", value=pre['plano'] if pre else "")
-            historico    = st.text_area("Histórico Médico", value=pre['historico'] if pre else "")
-            observacao   = st.text_area("Observação", value=pre['observacao'] if pre else "")
-            ok           = st.form_submit_button("Salvar")
+            cpf         = st.text_input("CPF", value=pre['cpf'] if pre else "")
+            rg          = st.text_input("RG", value=pre['rg'] if pre else "")
+            email       = st.text_input("Email", value=pre['email'] if pre else "")
+            tel         = st.text_input("Telefone principal", value=pre['tel'] if pre else "")
+            tel2        = st.text_input("Telefone secundário", value=pre['tel2'] if pre else "")
+            endereco    = st.text_input("Endereço (Rua)", value=pre['endereco'] if pre else "")
+            numero      = st.text_input("Número", value=pre['numero'] if pre else "")
+            complemento = st.text_input("Complemento", value=pre['complemento'] if pre else "")
+            bairro      = st.text_input("Bairro", value=pre['bairro'] if pre else "")
+            cep         = st.text_input("CEP", value=pre['cep'] if pre else "")
+            cidade      = st.text_input("Cidade", value=pre['cidade'] if pre else "")
+            estado      = st.text_input("Estado (UF)", value=pre['estado'] if pre else "")
+            plano       = st.text_input("Plano de Saúde", value=pre['plano'] if pre else "")
+            historico   = st.text_area("Histórico Médico", value=pre['historico'] if pre else "")
+            observacao  = st.text_area("Observação", value=pre['observacao'] if pre else "")
+            ok          = st.form_submit_button("Salvar")
         if ok:
             nid = pacientes.adicionar_paciente(
                 nome, data_str, idade,
@@ -331,7 +355,12 @@ def page_usuarios():
 def page_minhas_consultas(pid):
     st.title("Minhas Consultas")
     try:
-        df = pd.DataFrame(agendamentos.obter_agendamentos_por_paciente(pid))
+        raw = agendamentos.obter_agendamentos_por_paciente(pid)
+        df  = pd.DataFrame(raw)
+        if not df.empty:
+            campos = [c for c in ("data", "hora", "observacao") if c in df.columns]
+            df = df[campos]
+            df.columns = ["Data", "Hora", "Observações"]
         aggrid_table(df)
     except Exception as e:
         st.error(f"Erro ao carregar consultas: {e}")
@@ -351,7 +380,7 @@ def page_exames(pid):
     except Exception as e:
         st.error(f"Erro ao gerenciar exames: {e}")
 
-# ---- Router ----
+# ---- Roteador principal ----
 if role == "admin":
     escolha = option_menu(None,
         ["Dashboard","Pacientes","Agendamentos","Prontuários",
