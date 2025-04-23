@@ -1,55 +1,51 @@
-# auth.py – Módulo de autenticação com admin via st.secrets
+# auth.py – Autenticação com admin via secrets e Supabase
 
 import streamlit as st
-from database import supabase
+from banco_dados import supabase
 import bcrypt
 
-def hash_password(password: str) -> str:
-    salt = bcrypt.gensalt()
-    return bcrypt.hashpw(password.encode("utf-8"), salt).decode("utf-8")
-
-def verify_password(password: str, hashed: str) -> bool:
-    return bcrypt.checkpw(password.encode("utf-8"), hashed.encode("utf-8"))
+def verify_password(pwd: str, hashed: str) -> bool:
+    return bcrypt.checkpw(pwd.encode("utf-8"), hashed.encode("utf-8"))
 
 def login() -> dict:
-    """
-    1) tenta login de admin definido em st.secrets:
-       st.secrets['admin_login'], st.secrets['admin_password']
-    2) se não for admin, busca na tabela 'usuarios' do Supabase
-    Retorna dict com keys: user, name, role, pid
-    """
     st.title("Login")
     user_input = st.text_input("Usuário")
     pwd        = st.text_input("Senha", type="password")
     if not st.button("Entrar"):
         st.stop()
 
-    # --- 1) Admin via secrets ---
+    # 1) Admin via secrets
     admin_login    = st.secrets.get("admin_login")
     admin_password = st.secrets.get("admin_password")
-    if admin_login and admin_password and user_input == admin_login:
-        if pwd == admin_password:
+    admin_hash     = st.secrets.get("admin_hash")
+
+    if admin_login and user_input == admin_login:
+        # se tiver senha em texto
+        if admin_password and pwd == admin_password:
             sess = {"user": admin_login, "name": "Administrador", "role": "admin", "pid": None}
             st.session_state["auth"] = sess
             return sess
-        else:
-            st.error("Senha do admin incorreta.")
-            st.stop()
+        # se tiver só hash
+        if admin_hash and verify_password(pwd, admin_hash):
+            sess = {"user": admin_login, "name": "Administrador", "role": "admin", "pid": None}
+            st.session_state["auth"] = sess
+            return sess
+        st.error("Senha do admin incorreta.")
+        st.stop()
 
-    # --- 2) Usuário comum no Supabase ---
+    # 2) Usuário no Supabase
     resp = (
-        supabase
-        .table("usuarios")
-        .select("login, senha_hash, role, paciente_id, nome")
-        .eq("login", user_input)
-        .execute()
+        supabase.table("usuarios")
+                 .select("login, senha_hash, role, paciente_id, nome")
+                 .eq("login", user_input)
+                 .execute()
     )
-    registros = resp.data or []
-    if len(registros) != 1:
+    reg = resp.data or []
+    if len(reg) != 1:
         st.error("Usuário não encontrado.")
         st.stop()
 
-    user = registros[0]
+    user = reg[0]
     if not verify_password(pwd, user["senha_hash"]):
         st.error("Senha inválida.")
         st.stop()
