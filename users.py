@@ -1,41 +1,62 @@
-import os, streamlit as st, bcrypt
-from typing import Dict, List, Optional
-from datetime import datetime
-from supabase import create_client, Client
+# users.py – Módulo de gerenciamento de usuários
 
-# Conexão Supabase
-SUPABASE_URL = os.getenv("SUPABASE_URL") or st.secrets.get("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY") or st.secrets.get("SUPABASE_KEY")
-if not SUPABASE_URL or not SUPABASE_KEY:
-    raise RuntimeError("Defina SUPABASE_URL e SUPABASE_KEY em env ou Secrets.")
+import bcrypt
+from typing import List, Dict
+from banco_dados import supabase
 
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-TBL = "usuarios"
+def criar_usuario(
+    login: str,
+    nome: str,
+    senha: str,
+    role: str,
+    paciente_id: int
+) -> bool:
+    """
+    Cria um usuário no Supabase, garantindo que cada campo vá para a coluna certa.
 
-def _tbl():
-    return supabase.table(TBL)
+    Parâmetros:
+      - login: texto único do usuário
+      - nome: nome completo do usuário
+      - senha: texto em claro (será transformado em hash)
+      - role: 'paciente' ou 'admin'
+      - paciente_id: id do paciente vinculado (pode ser None para admin)
 
-def hash_pwd(pwd: str) -> str:
-    return bcrypt.hashpw(pwd.encode(), bcrypt.gensalt()).decode()
+    Retorna True se criado com sucesso.
+    """
+    # Gera hash da senha
+    senha_hash = bcrypt.hashpw(senha.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
-def check_pwd(pwd: str, hashed: str) -> bool:
-    return bcrypt.checkpw(pwd.encode(), hashed.encode())
-
-def criar_usuario(login: str, nome: str, senha: str, role: str = "paciente") -> int:
-    item = {
-        "login": login.lower(),
-        "nome": nome,
-        "senha_hash": hash_pwd(senha),
-        "role": role,
-        "criado_em": datetime.utcnow().isoformat()
+    # Monta registro com chaves idênticas ao schema do Supabase
+    registro = {
+        "login":       login,
+        "nome":        nome,
+        "senha_hash":  senha_hash,
+        "role":        role,
+        "paciente_id": paciente_id
     }
-    res = _tbl().insert(item).execute()
-    return res.data[0]["id"]
 
-def get_user(login: str) -> Optional[Dict]:
-    res = _tbl().select("*").eq("login", login.lower()).single().execute()
-    return res.data
+    resp = supabase.table("usuarios").insert(registro).execute()
+    return bool(getattr(resp, "data", None))
+
 
 def listar_usuarios() -> List[Dict]:
-    res = _tbl().select("id,login,nome,role,criado_em").order("login").execute()
-    return res.data or []
+    """
+    Retorna lista de usuários com campos:
+      id, login, nome, senha_hash, role, paciente_id, criado_em, atualizado_em, created_at
+    """
+    resp = supabase.table("usuarios").select("*").execute()
+    data = resp.data or []
+    usuarios = []
+    for u in data:
+        usuarios.append({
+            "id":             u.get("id"),
+            "login":          u.get("login", ""),
+            "nome":           u.get("nome", ""),
+            "senha_hash":     u.get("senha_hash", ""),
+            "role":           u.get("role", ""),
+            "paciente_id":    u.get("paciente_id"),
+            "criado_em":      u.get("criado_em"),
+            "atualizado_em":  u.get("atualizado_em"),
+            "created_at":     u.get("created_at")
+        })
+    return usuarios
