@@ -1,7 +1,7 @@
 # auth.py – Módulo de autenticação com admin via st.secrets
 
 import streamlit as st
-from banco_dados import supabase
+from database import supabase
 import bcrypt
 
 def hash_password(password: str) -> str:
