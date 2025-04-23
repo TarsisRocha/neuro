@@ -12,6 +12,10 @@ from reportlab.lib.utils import ImageReader
 from streamlit_option_menu import option_menu
 from st_aggrid import AgGrid, GridOptionsBuilder
 
+from database import supabase
+import auth, users, pacientes, agendamentos, prontuario, financeiro, comunicacao, relatorios
+from laudo_templates import LAUDOS
+
 # ---- Configura diretórios ----
 BASE_DIR   = Path(__file__).resolve().parent
 LOGO_FILE  = BASE_DIR / "neuro.png"
@@ -26,16 +30,11 @@ st.set_page_config(
 )
 
 # ---- Autenticação ----
-import auth
-try:
-    auth_data   = auth.login()
-    user_key    = auth_data["user"]
-    user_name   = auth_data["name"]
-    role        = auth_data["role"]       # 'admin' ou 'paciente'
-    paciente_id = auth_data.get("pid")
-except Exception as e:
-    st.error(f"Erro na autenticação: {e}")
-    st.stop()
+auth_data = auth.login()
+user_key  = auth_data["user"]
+user_name = auth_data["name"]
+role      = auth_data["role"]
+paciente_id = auth_data.get("pid")
 
 # ---- Sidebar ----
 st.sidebar.success(f"Logado como {user_name} ({role})")
@@ -61,11 +60,13 @@ def aggrid_table(df: pd.DataFrame):
     opts = gb.build()
     opts['domLayout'] = 'normal'
     AgGrid(
-        df, gridOptions=opts,
+        df,
+        gridOptions=opts,
         update_mode="MODEL_CHANGED",
         fit_columns_on_grid_load=False,
         enable_enterprise_modules=False,
-        theme="streamlit", height=400
+        theme="streamlit",
+        height=400
     )
 
 # ---- Geração de PDF de laudo ----
@@ -100,10 +101,6 @@ def gerar_pdf_laudo(texto: str, nome_pac: str):
     buf.seek(0)
     return buf, f"laudo_{nome_pac.replace(' ','_')}_{data_str}.pdf"
 
-# ---- Importa módulos de dados ----
-import users, pacientes, agendamentos, prontuario, financeiro, comunicacao, relatorios
-from laudo_templates import LAUDOS
-
 # ---- Páginas ----
 
 def page_dashboard():
@@ -121,18 +118,13 @@ def page_pacientes():
     st.title("Pacientes")
     lista = pacientes.obter_pacientes()
     opts  = {f"{p['cpf']} - {p['nome']}": p for p in lista if p.get('cpf')}
-    sel   = st.selectbox("Buscar existente (CPF - Nome)", [""] + list(opts.keys()))
+    sel   = st.selectbox("Buscar existente (CPF ‒ Nome)", [""] + list(opts))
     pre   = opts.get(sel)
 
     with st.expander("Novo paciente"):
         with st.form("cadpac"):
             nome        = st.text_input("Nome completo", value=pre['nome'] if pre else "")
-            data_def    = ""
-            if pre and pre.get('data_nascimento'):
-                try:
-                    dt = datetime.date.fromisoformat(pre['data_nascimento'])
-                    data_def = dt.strftime("%d/%m/%Y")
-                except: pass
+            data_def    = pre.get('data_nasc','') if pre else ""
             data_str    = st.text_input("Data de nascimento (DD/MM/AAAA)", value=data_def)
             data_nasc, idade = None, None
             if data_str:
@@ -157,22 +149,18 @@ def page_pacientes():
             estado      = st.text_input("Estado (UF)", value=pre['estado'] if pre else "")
             plano       = st.text_input("Plano de Saúde", value=pre['plano'] if pre else "")
             historico   = st.text_area("Histórico Médico", value=pre['historico'] if pre else "")
-            observacoes = st.text_area("Observações Gerais", value=pre['observacoes'] if pre else "")
+            observacao  = st.text_area("Observação", value=pre['observacao'] if pre else "")
             ok          = st.form_submit_button("Salvar")
-
         if ok:
-            if not nome or not data_nasc:
-                st.error("Nome e data de nascimento são obrigatórios.")
-            else:
-                nid = pacientes.adicionar_paciente(
-                    nome, data_nasc.isoformat(), idade,
-                    cpf, rg, email, tel, tel2,
-                    endereco, numero, complemento, bairro,
-                    cep, cidade, estado, plano,
-                    historico, observacoes
-                )
-                if nid:
-                    st.success(f"Paciente cadastrado! (ID {nid})")
+            nid = pacientes.adicionar_paciente(
+                nome, data_str, idade,
+                cpf, rg, email, tel, tel2,
+                endereco, numero, complemento, bairro,
+                cep, cidade, estado, plano,
+                historico, observacao
+            )
+            if nid:
+                st.success(f"Paciente cadastrado! (ID {nid})")
 
     try:
         df = pd.DataFrame(lista)
@@ -206,10 +194,14 @@ def page_agendamentos(admin=True, pid=None):
     except Exception as e:
         st.error(f"Erro em agendamentos: {e}")
 
-def page_prontuarios(pid):
+def page_prontuarios(pid=None):
     st.title("Prontuário")
+    pacientes_list = pacientes.obter_pacientes()
+    options = {f"{p['nome']} (ID {p['id']})": p['id'] for p in pacientes_list}
+    escolha = st.selectbox("Buscar paciente pelo nome", list(options))
+    pid = options[escolha]
+
     try:
-        # novo registro
         with st.expander("Novo registro"):
             with st.form("formpr"):
                 desc = st.text_area("Descrição")
@@ -218,19 +210,16 @@ def page_prontuarios(pid):
                 prontuario.adicionar_prontuario(pid, desc, datetime.date.today().isoformat())
                 st.success("Registro salvo!")
 
-        # tabela de registros
-        df = pd.DataFrame(prontuario.obter_prontuarios_por_paciente(pid))
-        aggrid_table(df)
+        df_pr = pd.DataFrame(prontuario.obter_prontuarios_por_paciente(pid))
+        aggrid_table(df_pr)
 
-        # exames anexados
         st.subheader("Exames enviados")
         arquivos = list(UPLOAD_DIR.glob(f"{pid}_*"))
         if arquivos:
             for arq in arquivos:
                 with open(arq, "rb") as f:
                     dados = f.read()
-                st.download_button(arq.name, dados, file_name=arq.name,
-                                   mime="application/octet-stream")
+                st.download_button(arq.name, dados, file_name=arq.name, mime="application/octet-stream")
         else:
             st.info("Nenhum exame anexado.")
     except Exception as e:
@@ -277,13 +266,11 @@ def page_laudos():
         opts   = {f"{p['id']} - {p['nome']}": p for p in pacientes.obter_pacientes()}
         pac    = opts[st.selectbox("Paciente", list(opts))]
         modelo = st.selectbox("Modelo de Laudo", list(LAUDOS.keys()))
-        texto  = LAUDOS[modelo].format(nome=pac['nome'],
-                                       data=datetime.date.today().strftime("%d/%m/%Y"))
+        texto  = LAUDOS[modelo].format(nome=pac['nome'], data=datetime.date.today().strftime("%d/%m/%Y"))
         texto  = st.text_area("Conteúdo", texto, height=300)
         if st.button("Gerar PDF"):
             buf, fname = gerar_pdf_laudo(texto, pac['nome'])
-            st.download_button("Download PDF", buf,
-                               file_name=fname, mime="application/pdf")
+            st.download_button("Download PDF", buf, file_name=fname, mime="application/pdf")
     except Exception as e:
         st.error(f"Erro na emissão de laudos: {e}")
 
@@ -328,21 +315,6 @@ def page_minhas_consultas(pid):
     except Exception as e:
         st.error(f"Erro ao carregar consultas: {e}")
 
-def page_exames(pid):
-    st.title("Meus Exames")
-    try:
-        file = st.file_uploader("Enviar exame (PDF/imagem)", type=["pdf","png","jpg","jpeg"])
-        if file and st.button("Enviar Exame"):
-            dest = UPLOAD_DIR / f"{pid}_{file.name}"
-            with dest.open("wb") as f:
-                f.write(file.getbuffer())
-            st.success("Exame enviado!")
-        st.subheader("Arquivos enviados")
-        for arq in UPLOAD_DIR.glob(f"{pid}_*"):
-            st.write(f"- {arq.name}")
-    except Exception as e:
-        st.error(f"Erro ao gerenciar exames: {e}")
-
 # ---- Roteador principal ----
 if role == "admin":
     escolha = option_menu(None,
@@ -352,17 +324,24 @@ if role == "admin":
                "chat-dots","file-earmark-pdf","person-check","clipboard-data"],
         orientation="horizontal"
     )
-    if escolha == "Dashboard":      page_dashboard()
-    elif escolha == "Pacientes":    page_pacientes()
-    elif escolha == "Agendamentos": page_agendamentos(admin=True)
+    if escolha == "Dashboard":
+        page_dashboard()
+    elif escolha == "Pacientes":
+        page_pacientes()
+    elif escolha == "Agendamentos":
+        page_agendamentos(admin=True)
     elif escolha == "Prontuários":
-        pid_sel = st.selectbox("Paciente ID",[p["id"] for p in pacientes.obter_pacientes()])
-        page_prontuarios(pid_sel)
-    elif escolha == "Financeiro":   page_financeiro(admin=True)
-    elif escolha == "Mensagens":    page_comunicacao()
-    elif escolha == "Laudos":       page_laudos()
-    elif escolha == "Usuários":     page_usuarios()
-    elif escolha == "Relatórios":   page_relatorios()
+        page_prontuarios()
+    elif escolha == "Financeiro":
+        page_financeiro(admin=True)
+    elif escolha == "Mensagens":
+        page_comunicacao()
+    elif escolha == "Laudos":
+        page_laudos()
+    elif escolha == "Usuários":
+        page_usuarios()
+    elif escolha == "Relatórios":
+        page_relatorios()
 else:
     escolha = option_menu(None,
         ["Meu Perfil","Meus Exames","Minhas Consultas"],
