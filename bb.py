@@ -14,6 +14,106 @@ st.title(APP_TITLE)
 st.caption("Importe um CSV/OFX, categorize automaticamente e veja o resumo por mês/categoria.")
 
 # ---------- Helpers ----------
+import pdfplumber
+
+def _brl_to_float(s: str):
+    if s is None:
+        return None
+    s = str(s).strip()
+    if s == "" or s.lower() in ("nan", "none", "-"):
+        return None
+    # Remove currency symbols and spaces
+    s = re.sub(r"[^\d,.-]", "", s)
+    # Handle cases like "1.234,56" -> "1234.56"
+    s = s.replace(".", "").replace(",", ".")
+    try:
+        return float(s)
+    except Exception:
+        return None
+
+def parse_santander_pdf(file_bytes: bytes) -> pd.DataFrame:
+    \"\"\"Extrai tabelas do PDF e retorna dataframe com colunas data/descricao/valor.
+    Funciona para PDFs 'text-based' (não digitalizados).\"\"\"
+    rows = []
+    with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+        for page in pdf.pages:
+            # Tenta extrair todas as tabelas da página
+            tables = page.extract_tables() or []
+            for tbl in tables:
+                # Limpa linhas vazias
+                tbl = [ [ (c or "").strip() for c in row ] for row in tbl if any((c or "").strip() for c in row) ]
+                if not tbl:
+                    continue
+                # Detecta header (primeira linha)
+                header = [h.strip() for h in tbl[0]]
+                body = tbl[1:]
+
+                # Heurísticas comuns do Santander
+                # 1) Header contendo Data | Descrição | Valor | (D/C) ou colunas Crédito/Débito
+                hlower = [h.lower() for h in header]
+
+                # Mapas por nome aproximado
+                def find_col(names):
+                    for cand in names:
+                        for idx, h in enumerate(hlower):
+                            if cand in h:
+                                return idx
+                    return None
+
+                idx_data = find_col(["data", "lançamento", "dt"])
+                idx_desc = find_col(["descri", "hist", "texto", "lançamento"])
+                idx_val  = find_col(["valor", "r$", "vlr"])
+                idx_cred = find_col(["crédito", "credito"])
+                idx_deb  = find_col(["débito", "debito"])
+                idx_dc   = find_col(["d/c", "dc", "tipo", "natureza"])
+
+                # Se tiver Crédito/Débito separados, calcula sinal
+                for r in body:
+                    try:
+                        data = r[idx_data] if idx_data is not None and idx_data < len(r) else None
+                        desc = r[idx_desc] if idx_desc is not None and idx_desc < len(r) else None
+
+                        # Monta valor
+                        valor = None
+                        if idx_cred is not None or idx_deb is not None:
+                            cred = _brl_to_float(r[idx_cred]) if idx_cred is not None and idx_cred < len(r) else None
+                            deb  = _brl_to_float(r[idx_deb])  if idx_deb  is not None and idx_deb  < len(r) else None
+                            valor = (cred or 0.0) - (deb or 0.0)
+                            # se ambos None, tenta coluna 'valor'
+                            if (cred is None and deb is None) and idx_val is not None and idx_val < len(r):
+                                valor = _brl_to_float(r[idx_val])
+                        else:
+                            # única coluna de valor, usa D/C para sinal se existir
+                            rawv = r[idx_val] if idx_val is not None and idx_val < len(r) else None
+                            valor = _brl_to_float(rawv)
+                            if idx_dc is not None and idx_dc < len(r):
+                                dc = str(r[idx_dc]).strip().upper()
+                                if dc.startswith("D") and valor is not None and valor > 0:
+                                    valor = -valor
+
+                        # Normaliza data brasileira
+                        d = None
+                        if data:
+                            for fmt in ("%d/%m/%Y", "%d/%m/%y", "%Y-%m-%d"):
+                                try:
+                                    d = pd.to_datetime(data, format=fmt).date()
+                                    break
+                                except Exception:
+                                    pass
+
+                        if d and desc and (valor is not None):
+                            rows.append((d, desc, valor))
+                    except Exception:
+                        continue
+
+    if not rows:
+        return pd.DataFrame(columns=["data","descricao","valor"])
+
+    df = pd.DataFrame(rows, columns=["data","descricao","valor"])
+    # Remove possíveis cabeçalhos repetidos como linhas
+    df = df[df["descricao"].str.lower() != "descrição"]
+    return df.reset_index(drop=True)
+
 DATE_COLS = ["data", "date", "Data", "Posting Date", "Transaction Date"]
 DESC_COLS = ["descricao", "description", "Memo", "Details", "Descrição"]
 AMT_COLS  = ["valor", "amount", "Value", "Amount", "Valor"]
@@ -99,7 +199,7 @@ def apply_rules(desc: str, rules: dict) -> str:
 
 # ---------- Upload ----------
 st.sidebar.header("Importação")
-file = st.sidebar.file_uploader("Envie um arquivo CSV/OFX", type=["csv","ofx","txt"])
+file = st.sidebar.file_uploader("Envie um arquivo CSV/OFX/PDF", type=["csv","ofx","txt","pdf"])
 currency_symbol = st.sidebar.text_input("Símbolo da moeda (ex.: R$)", value="R$")
 credit_positive = st.sidebar.selectbox("Crédito como positivo?", ["Sim","Não"], index=0)
 
@@ -132,6 +232,9 @@ if file is not None:
             amts  = re.findall(r"<TRNAMT>(-?\d+[.,]?\d*)", content)
             df_raw = pd.DataFrame({"data": dates, "descricao": memos, "valor": amts})
             df_raw["data"] = pd.to_datetime(df_raw["data"], format="%Y%m%d").dt.date
+        elif file.name.lower().endswith(".pdf"):
+            pdf_bytes = file.read()
+            df_raw = parse_santander_pdf(pdf_bytes)
         else:
             st.error("Formato não suportado.")
             st.stop()
