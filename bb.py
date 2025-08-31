@@ -32,8 +32,8 @@ def _brl_to_float(s: str):
         return None
 
 def parse_santander_pdf(file_bytes: bytes) -> pd.DataFrame:
-    \"\"\"Extrai tabelas do PDF e retorna dataframe com colunas data/descricao/valor.
-    Funciona para PDFs 'text-based' (não digitalizados).\"\"\"
+    
+    
     rows = []
     with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
         for page in pdf.pages:
