@@ -1,30 +1,160 @@
+# app.py — Analisador de Extrato (MVP)
+
 import os
 import io
 import re
 import base64
+import unicodedata
 from datetime import datetime
+from typing import List, Tuple, Optional
 
 import pandas as pd
 import streamlit as st
 
+# ===== Config =====
 APP_TITLE = "Analisador de Extrato (MVP)"
-
 st.set_page_config(page_title=APP_TITLE, layout="wide")
 st.title(APP_TITLE)
-st.caption("Importe um CSV/OFX, categorize automaticamente e veja o resumo por mês/categoria.")
+st.caption("Importe CSV/OFX/PDF, normalize, categorize por regras e veja resumo mensal/categorias.")
 
-# ---------- Helpers ----------
-import pdfplumber
+# ===== Sidebar: Import & Options =====
+st.sidebar.header("Importação")
+file = st.sidebar.file_uploader("Envie um arquivo CSV/OFX/PDF", type=["csv", "ofx", "txt", "pdf"])
+currency_symbol = st.sidebar.text_input("Símbolo da moeda", value="R$")
+credit_positive = st.sidebar.selectbox("Crédito como positivo?", ["Sim", "Não"], index=0)
+show_debug = st.sidebar.checkbox("Modo debug", value=False)
 
-def _brl_to_float(s: str):
+st.sidebar.header("Regras de categorização (ordem = prioridade)")
+DEFAULT_RULES_LIST = [
+    (r"\b(CASHBACK|ESTORNO)\b", "Ajustes/Entradas"),
+    (r"\bPIX\s*(RECEB|CRED|ENTR)\b", "Entradas"),
+    (r"\bSal(á|a)rio\b|Proventos|Rendimento|Dep(ó|o)sito|Receb\.", "Entradas"),
+    (r"\bPIX\b", "Transferências"),
+    (r"\bTED|DOC|TRANSFER(Ê|E)NCIA\b", "Transferências"),
+    (r"IFood|iFood|Rappi|Uber\s*Eats", "Alimentação"),
+    (r"Mercado\s*Livre|Carrefour|Assa(í|i)|Atacad(ã|a)o|Supermercado|Hiper", "Mercado"),
+    (r"\bPosto\b|Combust(í|i)vel|Shell|Ipiranga|BR\b", "Combustível"),
+    (r"Uber(?!\s*Eats)|99\s?Pop|Táxi", "Transporte"),
+    (r"Farm(á|a)cia|Drogasil|Pague\s*Menos|Drogaria", "Saúde"),
+    (r"Brisanet|Vivo|Claro|TIM|Oi", "Telefonia/Internet"),
+    (r"Netflix|Spotify|YouTube|Prime|Disney", "Assinaturas"),
+    (r"Aluguel|Imobili(á|a)ria", "Moradia"),
+    (r"\b(Anuidade|Tarifa|Pacote\s*Servi(ç|c)os)\b", "Tarifas Bancárias"),
+    (r"\bDARF\b|\bGPS\b|\bSEFAZ\b|Imposto", "Impostos/Taxas"),
+    (r"\b(CART(Ã|A)O|DEB(IT|IT.)|PAGTO\s*CART|\bCOMPRA\b)", "Cartão/Débito"),
+    (r"CEF|CAIXA|BB|Bradesco|Ita(u|ú)|Santander|Nubank|Inter|C6", "Bancário/Taxas"),
+    (r".*", "Outros"),
+]
+_rules_default_text = "\n".join([f"{pat} => {cat}" for pat, cat in DEFAULT_RULES_LIST])
+rules_text = st.sidebar.text_area("Regex => Categoria (um por linha)", value=_rules_default_text, height=260)
+
+
+# ===== Helpers: parse text rules =====
+def parse_rules(text: str) -> List[Tuple[str, str]]:
+    rules: List[Tuple[str, str]] = []
+    for line in text.splitlines():
+        if "=>" in line:
+            pat, cat = line.split("=>", 1)
+            rules.append((pat.strip(), cat.strip()))
+    return rules or DEFAULT_RULES_LIST
+
+
+def strip_accents(s: str) -> str:
+    return "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
+
+
+def apply_rules(desc: str, rules: List[Tuple[str, str]]) -> str:
+    d = strip_accents(desc or "")
+    for pattern, cat in rules:
+        if re.search(pattern, d, flags=re.IGNORECASE):
+            return cat
+    return "Outros"
+
+
+# ===== Normalization =====
+DATE_CANDIDATES = ["data", "date", "Data", "Posting Date", "Transaction Date"]
+DESC_CANDIDATES = ["descricao", "description", "Memo", "Details", "Descrição", "Histórico", "Historico", "Texto"]
+AMT_CANDIDATES = ["valor", "amount", "Value", "Amount", "Valor"]
+
+def _try_parse_date(s) -> Optional[pd.Timestamp]:
+    for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y", "%m/%d/%Y", "%d/%m/%y"):
+        try:
+            return pd.to_datetime(str(s).strip()[:10], format=fmt)
+        except Exception:
+            continue
+    # Fallback genérico
+    try:
+        return pd.to_datetime(s, errors="coerce")
+    except Exception:
+        return None
+
+def normalize_df(df: pd.DataFrame) -> pd.DataFrame:
+    cols = {c: str(c).strip() for c in df.columns}
+    df = df.rename(columns=cols)
+    colnames = list(df.columns)
+
+    # pick helpers
+    def pick(candidates):
+        for c in candidates:
+            if c in colnames:
+                return c
+        return None
+
+    dcol = pick(DATE_CANDIDATES)
+    xcol = pick(DESC_CANDIDATES)
+    vcol = pick(AMT_CANDIDATES)
+
+    # heurísticas extras
+    if dcol is None:
+        for c in colnames:
+            try:
+                parsed_any = df[c].astype(str).str.contains(r"\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2}", na=False).any()
+            except Exception:
+                parsed_any = False
+            if parsed_any:
+                dcol = c; break
+
+    if xcol is None:
+        for c in colnames:
+            cl = c.lower()
+            if "desc" in cl or "memo" in cl or "hist" in cl or "texto" in cl:
+                xcol = c; break
+
+    if vcol is None:
+        numeric_cols = []
+        for c in colnames:
+            try:
+                ratio = pd.to_numeric(df[c], errors="coerce").notna().mean()
+            except Exception:
+                ratio = 0
+            if ratio > 0.6:
+                numeric_cols.append(c)
+        if numeric_cols:
+            vcol = numeric_cols[-1]
+
+    if dcol is None or xcol is None or vcol is None:
+        return pd.DataFrame(columns=["data", "descricao", "valor"])
+
+    out = pd.DataFrame({
+        "data": df[dcol].apply(_try_parse_date),
+        "descricao": df[xcol].astype(str).str.strip(),
+        "valor": pd.to_numeric(df[vcol], errors="coerce"),
+    })
+    out = out.dropna(subset=["data", "valor"]).reset_index(drop=True)
+    out["data"] = out["data"].dt.date
+    out["dia"] = pd.to_datetime(out["data"]).dt.day
+    out["ano_mes"] = pd.to_datetime(out["data"]).dt.to_period("M").astype(str)
+    return out
+
+
+# ===== PDF (pdfplumber + OCR fallback) =====
+def _brl_to_float(s: str) -> Optional[float]:
     if s is None:
         return None
     s = str(s).strip()
     if s == "" or s.lower() in ("nan", "none", "-"):
         return None
-    # Remove currency symbols and spaces
     s = re.sub(r"[^\d,.-]", "", s)
-    # Handle cases like "1.234,56" -> "1234.56"
     s = s.replace(".", "").replace(",", ".")
     try:
         return float(s)
@@ -32,27 +162,23 @@ def _brl_to_float(s: str):
         return None
 
 def parse_santander_pdf(file_bytes: bytes) -> pd.DataFrame:
-    
-    
+    try:
+        import pdfplumber
+    except Exception:
+        return pd.DataFrame(columns=["data", "descricao", "valor"])
+
     rows = []
     with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
         for page in pdf.pages:
-            # Tenta extrair todas as tabelas da página
             tables = page.extract_tables() or []
             for tbl in tables:
-                # Limpa linhas vazias
-                tbl = [ [ (c or "").strip() for c in row ] for row in tbl if any((c or "").strip() for c in row) ]
+                tbl = [[(c or "").strip() for c in row] for row in tbl if any((c or "").strip() for c in row)]
                 if not tbl:
                     continue
-                # Detecta header (primeira linha)
                 header = [h.strip() for h in tbl[0]]
                 body = tbl[1:]
-
-                # Heurísticas comuns do Santander
-                # 1) Header contendo Data | Descrição | Valor | (D/C) ou colunas Crédito/Débito
                 hlower = [h.lower() for h in header]
 
-                # Mapas por nome aproximado
                 def find_col(names):
                     for cand in names:
                         for idx, h in enumerate(hlower):
@@ -67,23 +193,18 @@ def parse_santander_pdf(file_bytes: bytes) -> pd.DataFrame:
                 idx_deb  = find_col(["débito", "debito"])
                 idx_dc   = find_col(["d/c", "dc", "tipo", "natureza"])
 
-                # Se tiver Crédito/Débito separados, calcula sinal
                 for r in body:
                     try:
                         data = r[idx_data] if idx_data is not None and idx_data < len(r) else None
                         desc = r[idx_desc] if idx_desc is not None and idx_desc < len(r) else None
-
-                        # Monta valor
                         valor = None
                         if idx_cred is not None or idx_deb is not None:
                             cred = _brl_to_float(r[idx_cred]) if idx_cred is not None and idx_cred < len(r) else None
                             deb  = _brl_to_float(r[idx_deb])  if idx_deb  is not None and idx_deb  < len(r) else None
                             valor = (cred or 0.0) - (deb or 0.0)
-                            # se ambos None, tenta coluna 'valor'
                             if (cred is None and deb is None) and idx_val is not None and idx_val < len(r):
                                 valor = _brl_to_float(r[idx_val])
                         else:
-                            # única coluna de valor, usa D/C para sinal se existir
                             rawv = r[idx_val] if idx_val is not None and idx_val < len(r) else None
                             valor = _brl_to_float(rawv)
                             if idx_dc is not None and idx_dc < len(r):
@@ -91,7 +212,6 @@ def parse_santander_pdf(file_bytes: bytes) -> pd.DataFrame:
                                 if dc.startswith("D") and valor is not None and valor > 0:
                                     valor = -valor
 
-                        # Normaliza data brasileira
                         d = None
                         if data:
                             for fmt in ("%d/%m/%Y", "%d/%m/%y", "%Y-%m-%d"):
@@ -107,180 +227,188 @@ def parse_santander_pdf(file_bytes: bytes) -> pd.DataFrame:
                         continue
 
     if not rows:
-        return pd.DataFrame(columns=["data","descricao","valor"])
+        return pd.DataFrame(columns=["data", "descricao", "valor"])
 
-    df = pd.DataFrame(rows, columns=["data","descricao","valor"])
-    # Remove possíveis cabeçalhos repetidos como linhas
+    df = pd.DataFrame(rows, columns=["data", "descricao", "valor"])
     df = df[df["descricao"].str.lower() != "descrição"]
     return df.reset_index(drop=True)
 
-DATE_COLS = ["data", "date", "Data", "Posting Date", "Transaction Date"]
-DESC_COLS = ["descricao", "description", "Memo", "Details", "Descrição"]
-AMT_COLS  = ["valor", "amount", "Value", "Amount", "Valor"]
+def parse_pdf_with_ocr(file_bytes: bytes) -> pd.DataFrame:
+    try:
+        import pdf2image, pytesseract
+    except Exception:
+        return pd.DataFrame(columns=["data", "descricao", "valor"])
 
-def _try_parse_date(s):
-    for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y", "%m/%d/%Y"):
+    try:
+        images = pdf2image.convert_from_bytes(file_bytes, dpi=200)
+    except Exception:
+        return pd.DataFrame(columns=["data", "descricao", "valor"])
+
+    lines: List[str] = []
+    for img in images:
+        text = pytesseract.image_to_string(img, lang="por")
+        for ln in text.splitlines():
+            ln = ln.strip()
+            if ln:
+                lines.append(ln)
+
+    row_re = re.compile(r"^(\d{2}/\d{2}/\d{4})\s+(.+?)\s+(-?\d{1,3}(?:\.\d{3})*,\d{2})$", re.UNICODE)
+    rows = []
+    for ln in lines:
+        m = row_re.match(ln)
+        if m:
+            d, desc, v = m.groups()
+            try:
+                dt = pd.to_datetime(d, format="%d/%m/%Y").date()
+            except Exception:
+                dt = None
+            vf = v.replace(".", "").replace(",", ".")
+            try:
+                vf = float(vf)
+            except Exception:
+                vf = None
+            if dt and (vf is not None):
+                rows.append((dt, desc, vf))
+
+    return pd.DataFrame(rows, columns=["data", "descricao", "valor"]) if rows else pd.DataFrame(columns=["data", "descricao", "valor"])
+
+
+# ===== OFX (ofxparse) =====
+def parse_ofx(file_bytes: bytes) -> pd.DataFrame:
+    try:
+        from ofxparse import OfxParser
+    except Exception:
+        # Caso a lib não esteja instalada, cai no parser simples por regex (menos robusto)
+        return parse_ofx_basic(file_bytes)
+
+    # tenta encodings comuns
+    text = None
+    for enc in ("latin-1", "utf-8", "cp1252"):
         try:
-            return datetime.strptime(str(s)[:10], fmt).date()
+            text = file_bytes.decode(enc)
+            break
         except Exception:
             continue
-    return None
+    if text is None:
+        text = file_bytes.decode(errors="ignore")
 
-def normalize_df(df: pd.DataFrame) -> pd.DataFrame:
-    cols = {c:str(c).strip() for c in df.columns}
-    df = df.rename(columns=cols)
+    ofx = OfxParser.parse(io.StringIO(text))
 
-    # Map column names to canonical
-    def pick(colnames, candidates):
-        for c in candidates:
-            if c in colnames:
-                return c
-        return None
+    rows = []
+    for acct in getattr(ofx, "accounts", []):
+        stt = getattr(acct, "statement", None)
+        if not stt or not getattr(stt, "transactions", None):
+            continue
+        for t in stt.transactions:
+            data = pd.to_datetime(t.date).date() if t.date else None
+            desc = (t.memo or t.payee or t.checknum or "").strip()
+            valor = float(t.amount) if t.amount is not None else None
+            if data and valor is not None:
+                rows.append((data, desc, valor))
+    return pd.DataFrame(rows, columns=["data", "descricao", "valor"])
 
-    colnames = list(df.columns)
-    dcol = pick(colnames, DATE_COLS)
-    xcol = pick(colnames, DESC_COLS)
-    vcol = pick(colnames, AMT_COLS)
 
-    # Heurísticas extras
-    if dcol is None:
-        # tenta detectar por dtype/valores com '/'
-        for c in colnames:
-            if df[c].astype(str).str.contains(r"\d{2}/\d{2}/\d{4}|\d{4}-\d{2}-\d{2}", na=False).any():
-                dcol = c; break
-    if xcol is None:
-        for c in colnames:
-            if "desc" in c.lower() or "memo" in c.lower() or "hist" in c.lower():
-                xcol = c; break
-    if vcol is None:
-        # tenta col numérica com sinais
-        numeric_cols = [c for c in colnames if pd.to_numeric(df[c], errors="coerce").notna().mean() > 0.7]
-        if numeric_cols:
-            vcol = numeric_cols[-1]
+def parse_ofx_basic(file_bytes: bytes) -> pd.DataFrame:
+    # Parser "manual" usando regex como fallback
+    content = file_bytes.decode(errors="ignore")
+    dates = re.findall(r"<DTPOSTED>(\d{8})", content)
+    memos = re.findall(r"<MEMO>(.*?)\n", content)
+    amts  = re.findall(r"<TRNAMT>(-?\d+[.,]?\d*)", content)
+    df_raw = pd.DataFrame({"data": dates, "descricao": memos, "valor": amts})
+    try:
+        df_raw["data"] = pd.to_datetime(df_raw["data"], format="%Y%m%d").dt.date
+    except Exception:
+        pass
+    try:
+        df_raw["valor"] = pd.to_numeric(df_raw["valor"].str.replace(".", "", regex=False).str.replace(",", ".", regex=False), errors="coerce")
+    except Exception:
+        df_raw["valor"] = pd.to_numeric(df_raw["valor"], errors="coerce")
+    return df_raw.dropna(subset=["data", "valor"]).reset_index(drop=True)
 
-    if dcol is None or xcol is None or vcol is None:
-        st.error(f"Não encontrei colunas padrão. Data:{dcol} | Descrição:{xcol} | Valor:{vcol}")
-        st.stop()
 
-    out = pd.DataFrame({
-        "data": df[dcol].apply(_try_parse_date),
-        "descricao": df[xcol].astype(str).str.strip(),
-        "valor": pd.to_numeric(df[vcol], errors="coerce")
-    })
-    out = out.dropna(subset=["data","valor"]).reset_index(drop=True)
-    out["dia"] = pd.to_datetime(out["data"]).dt.day
-    out["ano_mes"] = pd.to_datetime(out["data"]).dt.to_period("M").astype(str)
-    return out
-
-# ---------- Regras de categorização ----------
-DEFAULT_RULES = {
-    r"PIX|Chave|Transfer(ê|e)ncia|TED|DOC": "Transferências",
-    r"IFood|Rappi|Uber Eats|iFood": "Alimentação",
-    r"Supermercado|Hiper|Atacad(ã|a)o|Carrefour|Assa(í|i)|Mercado": "Mercado",
-    r"Uber|99\s?Pop|Táxi": "Transporte",
-    r"Farm(á|a)cia|Drogasil|Pague\s*Menos|Drogaria": "Saúde",
-    r"Vivo|Claro|TIM|Oi|Brisanet": "Telefonia/Internet",
-    r"Netflix|Spotify|YouTube|Prime|Disney": "Assinaturas",
-    r"CEF|CAIXA|BB|Bradesco|Ita(u|ú)|Santander|Nubank": "Bancário/Taxas",
-    r"Aluguel|Imobili(á|a)ria": "Moradia",
-    r"Posto|Combust(í|i)vel|Shell|Ipiranga|BR": "Combustível",
-    r"(Anuidade|Tarifa|Pacote\s*Servi(ç|c)os)": "Tarifas Bancárias",
-    r"Sal(á|a)rio|Pagamento|Proventos|Rendimento|Dep(ó|o)sito": "Entradas"
-}
-
-def apply_rules(desc: str, rules: dict) -> str:
-    for pattern, cat in rules.items():
-        if re.search(pattern, desc, flags=re.IGNORECASE):
-            return cat
-    # fallback heurística
-    if "-" in desc and any(k in desc.lower() for k in ["deb", "pag", "comp", "cart"]):
-        return "Cartão/Débito"
-    return "Outros"
-
-# ---------- Upload ----------
-st.sidebar.header("Importação")
-file = st.sidebar.file_uploader("Envie um arquivo CSV/OFX/PDF", type=["csv","ofx","txt","pdf"])
-currency_symbol = st.sidebar.text_input("Símbolo da moeda (ex.: R$)", value="R$")
-credit_positive = st.sidebar.selectbox("Crédito como positivo?", ["Sim","Não"], index=0)
-
-# Regras editáveis
-st.sidebar.header("Regras de categorização")
-rules_text = st.sidebar.text_area("Regex => Categoria (um por linha)",
-    value="\n".join([f"{k} => {v}" for k,v in DEFAULT_RULES.items()]), height=200)
-
-def parse_rules(text):
-    rules = {}
-    for line in text.splitlines():
-        if "=>" in line:
-            k,v = line.split("=>", 1)
-            rules[k.strip()] = v.strip()
-    return rules or DEFAULT_RULES
-
+# ===== Main flow =====
 rules = parse_rules(rules_text)
 
 if file is not None:
-    # Leitura básica
     try:
-        if file.name.lower().endswith(".csv") or file.name.lower().endswith(".txt"):
+        name = file.name.lower()
+        df_raw = pd.DataFrame()
+
+        if name.endswith((".csv", ".txt")):
+            # tenta autodetectar separador
             df_raw = pd.read_csv(file, sep=None, engine="python", encoding="utf-8")
-        elif file.name.lower().endswith(".ofx"):
-            # parse bem simples de OFX (Memo e Value)
-            content = file.read().decode(errors="ignore")
-            import re
-            dates = re.findall(r"<DTPOSTED>(\d{8})", content)
-            memos = re.findall(r"<MEMO>(.*?)\n", content)
-            amts  = re.findall(r"<TRNAMT>(-?\d+[.,]?\d*)", content)
-            df_raw = pd.DataFrame({"data": dates, "descricao": memos, "valor": amts})
-            df_raw["data"] = pd.to_datetime(df_raw["data"], format="%Y%m%d").dt.date
-        elif file.name.lower().endswith(".pdf"):
+
+        elif name.endswith(".ofx"):
+            df_raw = parse_ofx(file.read())
+
+        elif name.endswith(".pdf"):
             pdf_bytes = file.read()
             df_raw = parse_santander_pdf(pdf_bytes)
+            if df_raw is None or df_raw.empty:
+                df_raw = parse_pdf_with_ocr(pdf_bytes)
+
         else:
-            st.error("Formato não suportado.")
+            st.error("Formato não suportado. Use CSV, OFX ou PDF.")
             st.stop()
+
     except Exception as e:
         st.exception(e)
         st.stop()
 
-    df = normalize_df(df_raw)
+    # Debug: pré-normalização
+    if show_debug:
+        st.info("DEBUG — pré-normalização")
+        st.write("Linhas extraídas (PDF/OFX/CSV):", 0 if df_raw is None else len(df_raw))
+        st.dataframe(df_raw.head(50) if df_raw is not None else pd.DataFrame())
+
+    # Normaliza
+    df = normalize_df(df_raw if df_raw is not None else pd.DataFrame())
+
+    if df.empty:
+        st.warning("Não foi possível reconhecer o extrato. Tente exportar **CSV/OFX** no banco ou ative o *Modo debug* para ver o que foi lido.")
+        st.stop()
+
+    # Ajuste de sinal (se usuário pedir)
     if credit_positive == "Não":
         df["valor"] = -df["valor"]
 
     # Categorias
     df["categoria"] = df["descricao"].apply(lambda s: apply_rules(s, rules))
 
+    # ===== KPIs =====
     col1, col2, col3 = st.columns(3)
     with col1:
         st.metric("Movimentos", len(df))
     with col2:
-        st.metric("Entradas", f"{currency_symbol} {df.loc[df['valor']>0,'valor'].sum():,.2f}")
+        entradas = df.loc[df["valor"] > 0, "valor"].sum()
+        st.metric("Entradas", f"{currency_symbol} {entradas:,.2f}")
     with col3:
-        st.metric("Saídas", f"{currency_symbol} {df.loc[df['valor']<0,'valor'].sum():,.2f}")
+        saidas = df.loc[df["valor"] < 0, "valor"].sum()
+        st.metric("Saídas", f"{currency_symbol} {saidas:,.2f}")
 
+    # ===== Resumos =====
     st.subheader("Resumo por mês")
-    resumo_mes = df.groupby("ano_mes")["valor"].sum().reset_index().rename(columns={"valor":"saldo"})
+    resumo_mes = df.groupby("ano_mes")["valor"].sum().reset_index().rename(columns={"valor": "saldo"})
     st.dataframe(resumo_mes)
 
     st.subheader("Resumo por categoria")
     resumo_cat = df.groupby("categoria")["valor"].sum().reset_index().sort_values("valor")
     st.dataframe(resumo_cat)
 
+    # ===== Tabela =====
     st.subheader("Extrato normalizado")
     st.dataframe(df)
 
-    # Export
-    csv = df.to_csv(index=False).encode("utf-8")
-    st.download_button("Baixar CSV normalizado", data=csv, file_name="extrato_normalizado.csv", mime="text/csv")
+    # ===== Export =====
+    csv_bytes = df.to_csv(index=False).encode("utf-8")
+    st.download_button("Baixar CSV normalizado", data=csv_bytes, file_name="extrato_normalizado.csv", mime="text/csv")
 
-    # Dicas
-    with st.expander("Dicas de uso"):
+    with st.expander("Dicas"):
         st.write("""
-        - Ajuste as *regras* na barra lateral para melhorar a categorização automática.
-        - Se o banco exporta CSV com outros nomes de colunas, a detecção tenta mapear automaticamente.
-        - Para saldo inicial, some manualmente ou importe um arquivo de mês anterior.
+        - Coloque regras mais específicas no topo; genéricas no fim (ex.: `.* => Outros`).
+        - Use **OFX** quando possível (melhor que PDF); CSV também é ok.
+        - Se o PDF vier vazio, exporte OFX/CSV no banco ou habilite OCR (precisa `pytesseract` + `pdf2image` + pacotes do sistema).
         """)
 else:
-    st.info("Envie um arquivo de extrato (CSV/OFX) pela barra lateral.")
-    st.write("Bancos comuns: Nubank, Itaú, Caixa, Bradesco, Santander, Inter, C6 etc.")
-
-st.caption("MVP local. Integrações (Supabase, dashboards detalhados, múltiplas contas) podem ser adicionadas.")
+    st.info("Envie um arquivo de extrato (CSV/OFX/PDF) pela barra lateral.")
+    st.write("Dica: priorize OFX > CSV > PDF para melhor qualidade do parsing.")
