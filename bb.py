@@ -1,4 +1,4 @@
-# app.py — Analisador de Extrato (MVP) — versão corrigida
+# app.py — Analisador de Extrato (MVP) — BRL + origens/destinos + drill-down
 
 import io
 import re
@@ -12,11 +12,12 @@ import streamlit as st
 APP_TITLE = "Analisador de Extrato (MVP)"
 st.set_page_config(page_title=APP_TITLE, layout="wide")
 st.title(APP_TITLE)
-st.caption("Importe CSV/OFX/PDF, normalize, categorize por regras e veja resumos.")
+st.caption("Importe CSV/OFX/PDF, normalize, categorize por regras e veja resumos e detalhamentos.")
 
 # ===== Sidebar =====
 st.sidebar.header("Importação")
-file = st.sidebar.file_uploader("Envie um arquivo CSV/OFX/PDF", type=["csv", "ofx", "txt", "pdf"])
+# Dica: se o iOS esconder .ofx no seletor, você pode arrastar e soltar
+file = st.sidebar.file_uploader("Envie um arquivo CSV/OFX/PDF", type=["csv", "ofx", "qfx", "txt", "pdf"])
 currency_symbol = st.sidebar.text_input("Símbolo da moeda", value="R$")
 credit_positive = st.sidebar.selectbox("Crédito como positivo?", ["Sim", "Não"], index=0)
 show_debug = st.sidebar.checkbox("Modo debug", value=False)
@@ -45,7 +46,22 @@ DEFAULT_RULES_LIST = [
 _rules_default_text = "\n".join([f"{pat} => {cat}" for pat, cat in DEFAULT_RULES_LIST])
 rules_text = st.sidebar.text_area("Regex => Categoria (um por linha)", value=_rules_default_text, height=260)
 
-# ===== Regras helpers =====
+# ===== Utilitários =====
+def brl(x: float, symbol: str = "R$") -> str:
+    try:
+        s = f"{symbol} {x:,.2f}"
+        return s.replace(",", "X").replace(".", ",").replace("X", ".")
+    except Exception:
+        return f"{symbol} 0,00"
+
+def normalize_counterparty(s: str) -> str:
+    if not s:
+        return ""
+    s = s.upper()
+    s = re.sub(r"\b(PIX|TED|DOC|PAGAMENTO|COMPRA|DEBITO|DÉBITO|CR[EÉ]DITO|LAN(Ç|C)TO|TRANSFER[ÊE]NCIA)\b", "", s)
+    s = re.sub(r"\s{2,}", " ", s).strip()
+    return s[:60]
+
 def parse_rules(text: str) -> List[Tuple[str, str]]:
     rules: List[Tuple[str, str]] = []
     for line in text.splitlines():
@@ -64,7 +80,7 @@ def apply_rules(desc: str, rules: List[Tuple[str, str]]) -> str:
             return cat
     return "Outros"
 
-# ===== Normalização corrigida =====
+# ===== Normalização corrigida (.dt) =====
 DATE_CANDIDATES = ["data", "date", "Data", "Posting Date", "Transaction Date"]
 DESC_CANDIDATES = ["descricao", "description", "Memo", "Details", "Descrição", "Histórico", "Historico", "Texto"]
 AMT_CANDIDATES  = ["valor", "amount", "Value", "Amount", "Valor"]
@@ -116,7 +132,7 @@ def normalize_df(df: pd.DataFrame) -> pd.DataFrame:
     if dcol is None or xcol is None or vcol is None:
         return pd.DataFrame(columns=["data", "descricao", "valor"])
 
-    # Trata valor (BRL com . de milhar e , decimal)
+    # trata valor BRL com . milhar e , decimal
     valor_series = (
         df[vcol]
         .astype(str)
@@ -134,13 +150,13 @@ def normalize_df(df: pd.DataFrame) -> pd.DataFrame:
     # ✅ força datetime antes de usar .dt
     out["data"] = pd.to_datetime(out["data"], errors="coerce", dayfirst=True)
     out = out.dropna(subset=["data", "valor"]).reset_index(drop=True)
-    out["data"] = out["data"].dt.date  # agora .dt é seguro
+    out["data"] = out["data"].dt.date
 
     out["dia"] = pd.to_datetime(out["data"]).dt.day
     out["ano_mes"] = pd.to_datetime(out["data"]).dt.to_period("M").astype(str)
     return out
 
-# ===== PDF (pdfplumber + OCR) =====
+# ===== PDF (pdfplumber + OCR fallback opcional) =====
 def _brl_to_float(s: str) -> Optional[float]:
     if s is None:
         return None
@@ -227,6 +243,7 @@ def parse_santander_pdf(file_bytes: bytes) -> pd.DataFrame:
     return df.reset_index(drop=True)
 
 def parse_pdf_with_ocr(file_bytes: bytes) -> pd.DataFrame:
+    """OCR opcional (se tiver pdf2image + pytesseract + pacotes do sistema)."""
     try:
         import pdf2image, pytesseract
     except Exception:
@@ -265,8 +282,9 @@ def parse_pdf_with_ocr(file_bytes: bytes) -> pd.DataFrame:
 
     return pd.DataFrame(rows, columns=["data", "descricao", "valor"]) if rows else pd.DataFrame(columns=["data", "descricao", "valor"])
 
-# ===== OFX =====
+# ===== OFX (Money 98/99 e 2000+) =====
 def parse_ofx_basic(file_bytes: bytes) -> pd.DataFrame:
+    """Fallback simples por regex (OFX 1.x / SGML)."""
     content = file_bytes.decode(errors="ignore")
     dates = re.findall(r"<DTPOSTED>(\d{8})", content)
     memos = re.findall(r"<MEMO>(.*?)\n", content)
@@ -286,13 +304,15 @@ def parse_ofx_basic(file_bytes: bytes) -> pd.DataFrame:
     return df_raw.dropna(subset=["data", "valor"]).reset_index(drop=True)
 
 def parse_ofx(file_bytes: bytes) -> pd.DataFrame:
+    """Parser com ofxparse; cai para regex se não instalado."""
     try:
         from ofxparse import OfxParser
     except Exception:
         return parse_ofx_basic(file_bytes)
 
+    # tenta encodings comuns (inclui utf-16)
     text = None
-    for enc in ("latin-1", "utf-8", "cp1252"):
+    for enc in ("latin-1", "utf-8", "cp1252", "utf-16"):
         try:
             text = file_bytes.decode(enc)
             break
@@ -326,7 +346,7 @@ if file is not None:
         if name.endswith((".csv", ".txt")):
             df_raw = pd.read_csv(file, sep=None, engine="python", encoding="utf-8")
 
-        elif name.endswith(".ofx"):
+        elif name.endswith((".ofx", ".qfx")):
             df_raw = parse_ofx(file.read())
 
         elif name.endswith(".pdf"):
@@ -336,7 +356,7 @@ if file is not None:
                 df_raw = parse_pdf_with_ocr(pdf_bytes)
 
         else:
-            st.error("Formato não suportado. Use CSV, OFX ou PDF.")
+            st.error("Formato não suportado. Use CSV, OFX/QFX ou PDF.")
             st.stop()
 
     except Exception as e:
@@ -351,47 +371,84 @@ if file is not None:
     df = normalize_df(df_raw if df_raw is not None else pd.DataFrame())
 
     if df.empty:
-        st.warning("Não foi possível reconhecer o extrato. Tente exportar **CSV/OFX** ou ative o *Modo debug*.")
+        st.warning("Não foi possível reconhecer o extrato. Tente exportar **OFX/CSV** ou ative o *Modo debug*.")
         st.stop()
 
+    # Ajuste de sinal (se usuário pedir)
     if credit_positive == "Não":
         df["valor"] = -df["valor"]
 
+    # Categorias
     df["categoria"] = df["descricao"].apply(lambda s: apply_rules(s, rules))
 
-    # KPIs
+    # Tipo / contraparte / valores absolutos
+    df["tipo"] = df["valor"].apply(lambda v: "Entrada" if v > 0 else "Saída")
+    df["abs_valor"] = df["valor"].abs()
+    df["contraparte"] = df["descricao"].apply(normalize_counterparty)
+
+    # ===== KPIs (com BRL) =====
     col1, col2, col3 = st.columns(3)
     with col1:
         st.metric("Movimentos", len(df))
     with col2:
         entradas = df.loc[df["valor"] > 0, "valor"].sum()
-        st.metric("Entradas", f"{currency_symbol} {entradas:,.2f}")
+        st.metric("Entradas", brl(entradas, currency_symbol))
     with col3:
         saidas = df.loc[df["valor"] < 0, "valor"].sum()
-        st.metric("Saídas", f"{currency_symbol} {saidas:,.2f}")
+        st.metric("Saídas", brl(abs(saidas), currency_symbol))
 
-    # Resumos
-    st.subheader("Resumo por mês")
-    resumo_mes = df.groupby("ano_mes")["valor"].sum().reset_index().rename(columns={"valor": "saldo"})
-    st.dataframe(resumo_mes)
+    # ===== De onde recebi / onde gastei =====
+    st.subheader("Top origens (Entradas) por contraparte")
+    top_in = (df[df["valor"] > 0]
+              .groupby("contraparte")["valor"].sum()
+              .sort_values(ascending=False).head(20).reset_index())
+    top_in["recebido"] = top_in["valor"].apply(lambda v: brl(v, currency_symbol))
+    st.dataframe(top_in[["contraparte", "recebido"]])
 
-    st.subheader("Resumo por categoria")
-    resumo_cat = df.groupby("categoria")["valor"].sum().reset_index().sort_values("valor")
-    st.dataframe(resumo_cat)
+    st.subheader("Top destinos (Saídas) por contraparte")
+    top_out = (df[df["valor"] < 0]
+               .groupby("contraparte")["valor"].sum().abs()
+               .sort_values(ascending=False).head(20).reset_index())
+    top_out["gasto"] = top_out["valor"].apply(lambda v: brl(v, currency_symbol))
+    st.dataframe(top_out[["contraparte", "gasto"]])
 
-    # Tabela
+    # ===== Gastos/Recebimentos por categoria =====
+    st.subheader("Gastos por categoria (Saídas)")
+    g_cat_out = (df[df["valor"] < 0]
+                 .groupby("categoria")["valor"].sum().abs()
+                 .sort_values(ascending=False).reset_index())
+    g_cat_out["gasto"] = g_cat_out["valor"].apply(lambda v: brl(v, currency_symbol))
+    st.dataframe(g_cat_out[["categoria", "gasto"]])
+
+    st.subheader("Recebimentos por categoria (Entradas)")
+    g_cat_in = (df[df["valor"] > 0]
+                .groupby("categoria")["valor"].sum()
+                .sort_values(ascending=False).reset_index())
+    g_cat_in["recebido"] = g_cat_in["valor"].apply(lambda v: brl(v, currency_symbol))
+    st.dataframe(g_cat_in[["categoria", "recebido"]])
+
+    # ===== Drill-down por categoria =====
+    st.subheader("Detalhar uma categoria")
+    sel_cat = st.selectbox("Escolha a categoria", sorted(df["categoria"].unique()))
+    f = df[df["categoria"] == sel_cat].copy()
+    f["valor_fmt"] = f["valor"].apply(lambda v: brl(v, currency_symbol))
+    st.dataframe(f[["data", "descricao", "contraparte", "tipo", "valor_fmt"]].rename(columns={"valor_fmt": "valor"}))
+
+    # ===== Tabela final formatada =====
     st.subheader("Extrato normalizado")
-    st.dataframe(df)
+    df_show = df.copy()
+    df_show["valor"] = df_show["valor"].apply(lambda v: brl(v, currency_symbol))
+    st.dataframe(df_show[["data","descricao","contraparte","categoria","tipo","valor"]])
 
-    # Export
+    # ===== Export CSV (numérico) =====
     csv_bytes = df.to_csv(index=False).encode("utf-8")
     st.download_button("Baixar CSV normalizado", data=csv_bytes, file_name="extrato_normalizado.csv", mime="text/csv")
 
     with st.expander("Dicas"):
         st.write("""
-        - Priorize OFX > CSV > PDF para melhor parsing.
-        - Coloque regras mais específicas no topo; genéricas no fim (ex.: `.* => Outros`).
-        - PDF imagem requer OCR (pytesseract + pdf2image + pacotes do sistema).
+        - Priorize **OFX > CSV > PDF** para melhor parsing.
+        - Regras: específicas no topo; genéricas no fim (`.* => Outros`).
+        - PDF de imagem requer OCR (pytesseract + pdf2image + pacotes do sistema).
         """)
 else:
     st.info("Envie um arquivo de extrato (CSV/OFX/PDF) pela barra lateral.")
